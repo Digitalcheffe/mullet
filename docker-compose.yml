@@ -1,0 +1,15 @@
+services:
+  mullet:
+    build: .
+    image: mullet:latest
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      - PORT=8080
+      - DB_PATH=/data/mullet.db
+      # Secrets for plugins that reference ${VAR} in their setup fields
+      - OWM_API_KEY=${OWM_API_KEY:-}
+      - HA_TOKEN=${HA_TOKEN:-}
+    restart: unless-stopped

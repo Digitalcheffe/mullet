@@ -19,8 +19,10 @@ type ServerInfo struct {
 
 // NewRouter builds the top-level HTTP handler for the server. jwtSecret
 // signs and verifies admin session tokens; corsOrigins configures which
-// cross-origin callers may access the API (empty disables CORS headers).
-func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info ServerInfo) http.Handler {
+// cross-origin callers may access the API (empty disables CORS headers);
+// staticDir is the built frontend (web/dist) served for /admin, /display,
+// and everything else not matched below.
+func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info ServerInfo, staticDir string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 
@@ -49,10 +51,12 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	clientsMux := http.NewServeMux()
 	mux.Handle("/api/clients/", clientsMux)
 
-	// /display/* -- renders the full-screen display view. Handler lands
-	// in issue #23.
-	displayMux := http.NewServeMux()
-	mux.Handle("/display/", displayMux)
+	// Everything else -- /admin, /display/{slug}, and their static assets
+	// -- is the built frontend. Both are client-side routed (react-router),
+	// so any path without a matching static file falls back to
+	// index.html. /display/{slug} itself just renders the SPA shell here;
+	// the display's actual layout comes from a data API added in #18/#23.
+	mux.Handle("/", newSPAHandler(staticDir))
 
 	return withLogging(withCORS(corsOrigins)(mux))
 }

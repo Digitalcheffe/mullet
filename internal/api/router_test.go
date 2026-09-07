@@ -20,7 +20,9 @@ func testServerInfo() ServerInfo {
 	return ServerInfo{Port: "8080", DBPath: "/data/mullet.db", StartedAt: time.Now()}
 }
 
-func newTestRouter(t *testing.T, corsOrigins []string) (http.Handler, *sql.DB) {
+// newTestUserDB returns a migrated database seeded with one admin user
+// (username "admin", password "s3cret").
+func newTestUserDB(t *testing.T) *sql.DB {
 	t.Helper()
 
 	sqldb, err := db.Open(filepath.Join(t.TempDir(), "mullet.db"))
@@ -42,7 +44,13 @@ func newTestRouter(t *testing.T, corsOrigins []string) (http.Handler, *sql.DB) {
 		t.Fatalf("seeding user: %v", err)
 	}
 
-	router := NewRouter(sqldb, []byte(testJWTSecret), corsOrigins, testServerInfo())
+	return sqldb
+}
+
+func newTestRouter(t *testing.T, corsOrigins []string) (http.Handler, *sql.DB) {
+	t.Helper()
+	sqldb := newTestUserDB(t)
+	router := NewRouter(sqldb, []byte(testJWTSecret), corsOrigins, testServerInfo(), t.TempDir())
 	return router, sqldb
 }
 

@@ -11,6 +11,7 @@ type Config struct {
 	Port        string
 	DBPath      string
 	CORSOrigins []string
+	StaticDir   string
 }
 
 // Load reads configuration from environment variables, applying defaults
@@ -20,6 +21,7 @@ func Load() Config {
 		Port:        getEnv("PORT", "8080"),
 		DBPath:      getEnv("DB_PATH", "./data/mullet.db"),
 		CORSOrigins: getEnvList("CORS_ORIGINS"),
+		StaticDir:   getEnv("STATIC_DIR", "./web/dist"),
 	}
 }
 

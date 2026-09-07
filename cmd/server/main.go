@@ -51,7 +51,7 @@ func main() {
 		Port:      cfg.Port,
 		DBPath:    cfg.DBPath,
 		StartedAt: startedAt,
-	})
+	}, cfg.StaticDir)
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: router}
 
 	go func() {

@@ -14,11 +14,13 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string) http.Handl
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 
-	// /api/admin/* -- login is public; everything else requires a valid
-	// JWT. Real admin endpoints (settings, users, plugins, displays, ...)
-	// are added in later issues; handleWhoAmI exercises the auth guard
-	// end-to-end in the meantime.
+	// /api/admin/* -- login and first-run setup are public; everything
+	// else requires a valid JWT. Real admin endpoints (settings, users,
+	// plugins, displays, ...) are added in later issues; handleWhoAmI
+	// exercises the auth guard end-to-end in the meantime.
 	mux.HandleFunc("POST /api/admin/login", handleLogin(sqldb, jwtSecret))
+	mux.HandleFunc("GET /api/admin/setup", handleSetupStatus(sqldb))
+	mux.HandleFunc("POST /api/admin/setup", handleSetup(sqldb, jwtSecret))
 
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("GET /api/admin/me", handleWhoAmI)

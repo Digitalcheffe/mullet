@@ -7,10 +7,21 @@ import (
 
 	"github.com/Digitalcheffe/mullet/internal/api"
 	"github.com/Digitalcheffe/mullet/internal/config"
+	"github.com/Digitalcheffe/mullet/internal/db"
 )
 
 func main() {
 	cfg := config.Load()
+
+	sqldb, err := db.Open(cfg.DBPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer sqldb.Close()
+
+	if err := db.Migrate(sqldb); err != nil {
+		log.Fatal(err)
+	}
 
 	router := api.NewRouter()
 

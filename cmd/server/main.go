@@ -2,12 +2,19 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/Digitalcheffe/mullet/internal/api"
 	"github.com/Digitalcheffe/mullet/internal/config"
 	"github.com/Digitalcheffe/mullet/internal/db"
+	plugindata "github.com/Digitalcheffe/mullet/internal/plugins/data"
+	"github.com/Digitalcheffe/mullet/internal/scheduler"
 )
 
 func main() {
@@ -23,11 +30,30 @@ func main() {
 		log.Fatal(err)
 	}
 
-	router := api.NewRouter()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	addr := ":" + cfg.Port
-	log.Printf("mullet server listening on %s", addr)
-	if err := http.ListenAndServe(addr, router); err != nil {
+	registry := plugindata.NewRegistry()
+	sched := scheduler.New(sqldb, registry)
+	if err := sched.Start(ctx); err != nil {
+		log.Fatal(err)
+	}
+	defer sched.Stop()
+
+	router := api.NewRouter()
+	srv := &http.Server{Addr: ":" + cfg.Port, Handler: router}
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("server shutdown: %v", err)
+		}
+	}()
+
+	log.Printf("mullet server listening on :%s", cfg.Port)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
 }

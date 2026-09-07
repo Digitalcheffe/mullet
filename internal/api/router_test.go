@@ -8,12 +8,17 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Digitalcheffe/mullet/internal/auth"
 	"github.com/Digitalcheffe/mullet/internal/db"
 )
 
 const testJWTSecret = "test-secret"
+
+func testServerInfo() ServerInfo {
+	return ServerInfo{Port: "8080", DBPath: "/data/mullet.db", StartedAt: time.Now()}
+}
 
 func newTestRouter(t *testing.T, corsOrigins []string) (http.Handler, *sql.DB) {
 	t.Helper()
@@ -37,7 +42,7 @@ func newTestRouter(t *testing.T, corsOrigins []string) (http.Handler, *sql.DB) {
 		t.Fatalf("seeding user: %v", err)
 	}
 
-	router := NewRouter(sqldb, []byte(testJWTSecret), corsOrigins)
+	router := NewRouter(sqldb, []byte(testJWTSecret), corsOrigins, testServerInfo())
 	return router, sqldb
 }
 

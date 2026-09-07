@@ -19,6 +19,7 @@ import (
 )
 
 func main() {
+	startedAt := time.Now()
 	cfg := config.Load()
 
 	sqldb, err := db.Open(cfg.DBPath)
@@ -46,7 +47,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	router := api.NewRouter(sqldb, jwtSecret, cfg.CORSOrigins)
+	router := api.NewRouter(sqldb, jwtSecret, cfg.CORSOrigins, api.ServerInfo{
+		Port:      cfg.Port,
+		DBPath:    cfg.DBPath,
+		StartedAt: startedAt,
+	})
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: router}
 
 	go func() {

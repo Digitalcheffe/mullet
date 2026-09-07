@@ -1,0 +1,22 @@
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+}
+
+.stat-tile {
+  border: 1px solid var(--admin-border, #d0d0d0);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.stat-label {
+  opacity: 0.7;
+  font-size: 14px;
+}

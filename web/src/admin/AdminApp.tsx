@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
+import { Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
+import AdminLayout from './layout/AdminLayout';
+import Dashboard from './pages/Dashboard';
 import LoginPage from './pages/LoginPage';
+import SettingsPage from './pages/SettingsPage';
 import SetupWizard from './pages/SetupWizard';
 
 export default function AdminApp() {
@@ -36,12 +40,11 @@ function AdminShell() {
   }
 
   return (
-    <div>
-      <h1>Mullet Admin</h1>
-      <p>
-        Signed in as {username}. <button onClick={logout}>Sign out</button>
-      </p>
-      <p>Dashboard and navigation are added in a later issue.</p>
-    </div>
+    <Routes>
+      <Route element={<AdminLayout username={username!} onSignOut={logout} />}>
+        <Route index element={<Dashboard />} />
+        <Route path="settings" element={<SettingsPage />} />
+      </Route>
+    </Routes>
   );
 }

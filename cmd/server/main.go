@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Digitalcheffe/mullet/internal/api"
+	"github.com/Digitalcheffe/mullet/internal/auth"
 	"github.com/Digitalcheffe/mullet/internal/config"
 	"github.com/Digitalcheffe/mullet/internal/db"
 	plugindata "github.com/Digitalcheffe/mullet/internal/plugins/data"
@@ -40,7 +41,12 @@ func main() {
 	}
 	defer sched.Stop()
 
-	router := api.NewRouter()
+	jwtSecret, err := auth.LoadOrCreateJWTSecret(sqldb)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	router := api.NewRouter(sqldb, jwtSecret, cfg.CORSOrigins)
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: router}
 
 	go func() {

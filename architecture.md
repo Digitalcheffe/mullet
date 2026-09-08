@@ -7,8 +7,9 @@ from what's written, fix this doc in the same PR.
 
 [`docs/architecture_1.md`](docs/architecture_1.md) is the original design
 proposal this project started from. It's kept for the detail it still has
-on genuinely unbuilt areas (the dedicated client app protocol, the
-Microsoft Graph OAuth2 flow), but it has already drifted from what got
+on genuinely unbuilt areas (the dedicated client app protocol, the actual
+Microsoft Graph API calls -- the generic OAuth2 handshake itself is built,
+see [OAuth2](#oauth2-built)), but it has already drifted from what got
 built in several places — see [Divergence from the original
 proposal](#divergence-from-the-original-proposal) at the bottom. Where
 the two disagree, this document wins.
@@ -141,6 +142,69 @@ interleave with a scheduled tick on the same plugin type.
 
 ---
 
+## OAuth2 (Built)
+
+`internal/oauth` is the generic OAuth2 authorization-code handler every
+`AuthType: "oauth2"` plugin manifest (`DataPluginManifest.OAuthConfig` --
+`AuthURL`, `TokenURL`, `Scopes`, `TenantField`, see [The `DataPlugin`
+interface](#the-dataplugin-interface)) drives -- it knows nothing about
+Microsoft specifically, so a future non-Microsoft OAuth2 plugin (Google
+Calendar, say) works the same way without touching this package. No
+plugin sets `AuthType: "oauth2"` yet; #25's Microsoft Graph plugins are
+its first real consumer. Built on `golang.org/x/oauth2`, not MSAL --
+MSAL is Microsoft-specific (its client types assume Microsoft's
+authority-URL shape), which would have made a "generic" handler
+Microsoft-only by construction; `msgraph-sdk-go` isn't a dependency at
+all yet, since it's a Graph *API* client, not part of the OAuth2 flow --
+that lands with #25 when a plugin actually calls Graph endpoints.
+
+**Manifest contract**: an OAuth2 plugin's manifest declares `client_id`
+and `client_secret` as ordinary `SetupField`s (the same way
+`openweathermap` declares `api_key` for its own `AuthType: "api_key"`),
+plus a third field (named by `OAuthConfig.TenantField`, e.g. `"tenant"`)
+holding `"consumers"`/`"organizations"`/`"common"`/a tenant GUID for a
+Microsoft-identity-platform-style provider -- `internal/oauth` looks
+these three up by well-known key from the instance's own `config` JSON,
+so there's no separate credentials table.
+
+**Flow**: `GET /api/admin/plugins/instances/{id}/oauth/authorize` (JWT)
+builds the provider's consent URL (`{tenant}` substituted into
+`AuthURL`/`TokenURL`, redirect URL derived from the request's own
+`Host`/scheme rather than a fixed setting) and returns it as
+`{authorize_url}` JSON rather than redirecting itself -- a JWT-protected
+endpoint can't be reached by a plain browser navigation (no way to
+attach a Bearer header), so the admin UI calls it via its normal
+authenticated fetch and then navigates the browser itself
+(`window.location = authorize_url`). A CSRF `state` token
+(`oauth.PendingStore`, in-memory, single-use, 10-minute TTL, keyed to
+the plugin instance) is what lets the callback trust the redirect that
+comes back. `GET /api/oauth/callback` -- deliberately outside
+`/api/admin/*` and unauthenticated, since it's invoked by the admin's
+browser navigating away from the provider, not an authenticated API
+call -- exchanges the code, upserts `oauth_tokens`, and redirects to
+`/admin/plugins?oauth=success` or `?oauth=error&message=...` (the SPA
+reads this once on mount and shows a banner). `EnsureFreshToken`
+(`internal/oauth/refresh.go`) is what a plugin's `Configure` step will
+call before each `Fetch` -- returns the stored access token unchanged if
+it's not close to expiring, otherwise refreshes and persists a new one
+first; not wired into the scheduler yet since no plugin needs it until
+#25.
+
+Note the full-page navigation this requires (there's no way to reach a
+real provider's consent screen without one) collides with the admin
+session being held only in memory ([Auth Model](#auth-model-built)) --
+leaving the SPA to authorize and coming back loses the session, so the
+admin has to log back in once. The token itself is safe (saved
+server-side before the redirect back), just the browser session; not
+addressed here since it's a pre-existing, deliberate constraint from
+earlier work, not something #24 introduced.
+
+Admin UI: `PluginsPage.tsx` shows Authorize (or Re-authorize + Revoke,
+once `pluginInstanceResponse.oauth_authorized` is true) on any instance
+of an `auth_type: "oauth2"` plugin.
+
+---
+
 ## Data Shapes (Built)
 
 `internal/shapes` defines the framework's typed data contracts — plain
@@ -207,18 +271,17 @@ one.
 | `displays` | A physical output routed at `/display/{slug}` (unique). `theme_id` nullable FK to `themes`; `rotation_seconds` how often it rotates through its screens; `show_top_bar`/`show_bottom_bar` toggle the fixed clock/weather and now-playing/alerts bars |
 | `screens` | A page within a display (`ON DELETE CASCADE` from `displays`). Owns its own grid (`columns`, `row_height`, `gap`, all in pixels except `columns`) rather than inheriting one from its display; `position` orders rotation |
 | `cards` | A positioned UI plugin on a screen's grid (`ON DELETE CASCADE` from `screens`). `x`/`y`/`w`/`h` are grid units. `data_plugin_instance_id` (nullable, `ON DELETE SET NULL`) is which configured plugin instance it reads from — nullable because a card's UI plugin might need no data (clock) or the admin hasn't wired one up yet; `SET NULL` rather than cascade so deleting an unrelated data plugin instance doesn't silently delete a card |
+| `oauth_tokens` | One row per OAuth2 plugin instance's access/refresh token (`internal/db/migrations/008_oauth_tokens.sql`, `ON DELETE CASCADE` from `data_plugin_instances`, `UNIQUE` on `plugin_instance_id`) — see [OAuth2](#oauth2-built) below |
 
 Every shape table carries `plugin_instance_id` (`ON DELETE CASCADE` from
 `data_plugin_instances`) and `fetched_at`. `shape_events`/`shape_tasks`
 additionally cascade from `calendars`/`task_lists`.
 
-CRUD for all four tables above is built (see [REST API Routes](#rest-api-routes)
+CRUD for all tables above is built (see [REST API Routes](#rest-api-routes)
 below), and so is an admin UI to manage all of it, including a
-drag-and-drop Designer for cards; see
+drag-and-drop Designer for cards and a live display renderer; see
 [Display Hierarchy](#display-hierarchy-built-end-to-end)
 and [Theme Cascade](#theme-cascade-editor-built-display-side-application-planned).
-The one thing that still doesn't render any of this is the display
-frontend itself (`/display/{slug}`).
 
 ### Planned
 
@@ -227,7 +290,6 @@ Full column lists for what's not built are in
 
 | Table | Purpose | Lands with |
 |---|---|---|
-| `oauth_tokens` | Access/refresh tokens for OAuth2 data plugins (Microsoft Graph, etc.) | Whichever OAuth2 plugin needs it first |
 | `clients` | Registered dedicated-client-app devices | #29 |
 
 ---
@@ -251,6 +313,9 @@ All routes below are wired in `internal/api/router.go`.
 | `GET`/`POST /api/admin/plugins/instances` | JWT | List / create plugin instances |
 | `PUT`/`DELETE /api/admin/plugins/instances/{id}` | JWT | Update / remove an instance |
 | `POST /api/admin/plugins/instances/{id}/test` | JWT | Run one configure+fetch cycle now, report success/error |
+| `GET /api/admin/plugins/instances/{id}/oauth/authorize` | JWT | Returns `{authorize_url}` for an OAuth2 plugin instance -- JSON, not a redirect, since the caller can't carry a Bearer header through a real browser navigation; see [OAuth2](#oauth2-built) |
+| `DELETE /api/admin/plugins/instances/{id}/oauth` | JWT | De-authorize an instance (deletes its stored token; the instance itself stays) |
+| `GET /api/oauth/callback` | none (see [OAuth2](#oauth2-built)) | The OAuth2 provider's redirect target after consent; exchanges the code, stores the token, redirects to `/admin/plugins?oauth=...` |
 | `GET`/`POST /api/admin/themes` | JWT | List / create themes |
 | `GET`/`PUT`/`DELETE /api/admin/themes/{id}` | JWT | Get / update / remove a theme (`DELETE` is `409` if a display still uses it) |
 | `GET`/`POST /api/admin/displays` | JWT | List / create displays |

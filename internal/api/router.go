@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Digitalcheffe/mullet/internal/oauth"
 	plugindata "github.com/Digitalcheffe/mullet/internal/plugins/data"
 	"github.com/Digitalcheffe/mullet/internal/scheduler"
 )
@@ -34,6 +35,10 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 
+	// pending tracks in-flight OAuth2 authorize attempts (CSRF state ->
+	// plugin instance ID) purely in memory -- see internal/oauth.PendingStore.
+	pending := oauth.NewPendingStore()
+
 	// /api/admin/* -- login and first-run setup are public; everything
 	// else requires a valid JWT (unless authDisabled). Real admin
 	// endpoints (users, displays, ...) are added in later issues;
@@ -48,11 +53,13 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	adminMux.HandleFunc("GET /api/admin/settings", handleGetSettings(sqldb, info))
 	adminMux.HandleFunc("PUT /api/admin/settings", handlePutSettings(sqldb))
 	adminMux.HandleFunc("GET /api/admin/plugins", handleListPlugins(registry))
-	adminMux.HandleFunc("GET /api/admin/plugins/instances", handleListPluginInstances(sqldb))
+	adminMux.HandleFunc("GET /api/admin/plugins/instances", handleListPluginInstances(sqldb, registry))
 	adminMux.HandleFunc("POST /api/admin/plugins/instances", handleCreatePluginInstance(sqldb, registry, sched))
 	adminMux.HandleFunc("PUT /api/admin/plugins/instances/{id}", handleUpdatePluginInstance(sqldb, registry, sched))
 	adminMux.HandleFunc("DELETE /api/admin/plugins/instances/{id}", handleDeletePluginInstance(sqldb, sched))
 	adminMux.HandleFunc("POST /api/admin/plugins/instances/{id}/test", handleTestPluginInstance(sched))
+	adminMux.HandleFunc("GET /api/admin/plugins/instances/{id}/oauth/authorize", handleOAuthAuthorize(sqldb, registry, pending))
+	adminMux.HandleFunc("DELETE /api/admin/plugins/instances/{id}/oauth", handleDeauthorizePluginInstance(sqldb))
 
 	adminMux.HandleFunc("GET /api/admin/themes", handleListThemes(sqldb))
 	adminMux.HandleFunc("POST /api/admin/themes", handleCreateTheme(sqldb))
@@ -87,6 +94,16 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	// /api/display/{slug} -- the display renderer's own layout fetch, no
 	// auth for the same reason as /api/data above.
 	mux.HandleFunc("GET /api/display/{slug}", handleGetDisplayLayout(sqldb))
+
+	// /api/oauth/callback -- the OAuth2 provider's redirect target after
+	// the admin grants or denies consent, deliberately outside
+	// /api/admin/* and unauthenticated: it's invoked by the admin's
+	// browser navigating away from the provider, not by an authenticated
+	// API call, and can't carry a Bearer token. Security instead comes
+	// from the single-use, short-lived `state` param minted only by
+	// handleOAuthAuthorize (which *is* behind requireAuth) -- see
+	// internal/oauth.PendingStore.
+	mux.HandleFunc("GET /api/oauth/callback", handleOAuthCallback(sqldb, registry, pending))
 
 	// /api/clients/* -- dedicated client app registration/polling, no
 	// auth (clients are admin-approved). Handlers land in issue #29.

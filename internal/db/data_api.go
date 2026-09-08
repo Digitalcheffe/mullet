@@ -28,6 +28,16 @@ var shapeTables = map[string]string{
 	"packages":         "shape_packages",
 	"infrastructure":   "shape_infrastructure",
 	"media_status":     "shape_media_status",
+	// calendars/task_lists aren't shapes a plugin's Fetch() produces --
+	// they're the entity-discovery metadata writeEvents/writeTasks
+	// populate as a side effect (see "Write path" in architecture.md).
+	// Reusing the same generic reader for them here (rather than a
+	// bespoke endpoint) is what lets a UI plugin ask "what's this
+	// event's calendar actually called" -- both tables already have the
+	// plugin_instance_id column ReadShape's JOIN requires, so nothing
+	// else about the read path needs to change.
+	"calendars":  "calendars",
+	"task_lists": "task_lists",
 }
 
 // shapeTimeColumns names the column a shape's optional from/to range

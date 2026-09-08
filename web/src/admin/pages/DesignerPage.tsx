@@ -54,10 +54,12 @@ interface PaletteItem {
 }
 
 const PALETTE: PaletteItem[] = [
-  { uiPluginId: 'clock', label: 'Clock', dataShape: null },
+  { uiPluginId: 'mullet-clock', label: 'Clock', dataShape: null },
   { uiPluginId: 'mullet-weather-current', label: 'Weather (Current)', dataShape: 'weather_current' },
   { uiPluginId: 'mullet-weather-forecast', label: 'Weather (Forecast)', dataShape: 'weather_forecast' },
-  { uiPluginId: 'calendar-agenda', label: 'Calendar Agenda', dataShape: 'events' },
+  { uiPluginId: 'mullet-calendar-agenda', label: 'Calendar Agenda', dataShape: 'events' },
+  { uiPluginId: 'mullet-task-list', label: 'Task List', dataShape: 'tasks' },
+  { uiPluginId: 'mullet-meal-plan', label: 'Meal Plan', dataShape: 'events' },
 ];
 
 const DEFAULT_CARD_SIZE = { w: 4, h: 3 };

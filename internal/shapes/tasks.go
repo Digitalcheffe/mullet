@@ -11,6 +11,11 @@ type Task struct {
 	Completed        bool    `db:"completed"`
 	DueDate          *string `db:"due_date"`
 	SortOrder        int     `db:"sort_order"`
+	// Priority is "low", "normal", or "high" (matching Microsoft Graph's
+	// own Importance values, the only producer so far) -- a plugin that
+	// has no concept of priority just leaves it as the zero value, which
+	// the writer treats the same as "normal".
+	Priority string `db:"priority"`
 
 	// TaskListExternalID/TaskListName identify the source task list this
 	// task belongs to. A plugin has no DB access to resolve a real

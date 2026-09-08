@@ -22,6 +22,14 @@ export interface WidgetProps<TData = unknown> {
   config: Record<string, unknown>;
   size: GridSize;
   theme: ThemeTokens;
+  // The card's own data_plugin_instance_id (null if it has none set) --
+  // most widgets don't need this, since `data` already carries their one
+  // shape's rows. It exists for a widget that needs a *second*, related
+  // shape from the same instance (e.g. calendar-agenda looking up a
+  // calendar's real name/color via the "calendars" shape, alongside its
+  // primary "events" data) -- fetch it the same way the display itself
+  // does, with the display's own useShapeData hook.
+  pluginInstanceId: number | null;
 }
 
 export interface UIPlugin<TData = unknown> {

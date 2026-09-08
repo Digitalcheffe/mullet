@@ -325,6 +325,32 @@ func TestWriteTasksScopesReplaceToItsOwnTaskList(t *testing.T) {
 	}
 }
 
+func TestWriteTasksPriorityDefaultsToNormal(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	rows := []any{
+		shapes.Task{ID: "task-1", Title: "No priority set", TaskListExternalID: "default", TaskListName: "Tasks"},
+		shapes.Task{ID: "task-2", Title: "High priority", Priority: "high", TaskListExternalID: "default", TaskListName: "Tasks"},
+	}
+	if err := WriteShape(sqldb, "tasks", 1, rows); err != nil {
+		t.Fatalf("WriteShape: %v", err)
+	}
+
+	var p1, p2 string
+	if err := sqldb.QueryRow(`SELECT priority FROM shape_tasks WHERE id = 'task-1' AND plugin_instance_id = 1`).Scan(&p1); err != nil {
+		t.Fatalf("reading task-1 priority: %v", err)
+	}
+	if p1 != "normal" {
+		t.Errorf("task-1 priority = %q, want normal (default for unset Priority)", p1)
+	}
+	if err := sqldb.QueryRow(`SELECT priority FROM shape_tasks WHERE id = 'task-2' AND plugin_instance_id = 1`).Scan(&p2); err != nil {
+		t.Fatalf("reading task-2 priority: %v", err)
+	}
+	if p2 != "high" {
+		t.Errorf("task-2 priority = %q, want high (explicitly set)", p2)
+	}
+}
+
 func TestWriteTasksMissingTaskListExternalID(t *testing.T) {
 	sqldb := newTestDB(t)
 

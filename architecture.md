@@ -442,7 +442,7 @@ Display   "Kitchen"  --  /display/kitchen
   nullable, `ON DELETE SET NULL`), and an optional `theme_override`.
 - **UI plugin**: the React component rendered inside a card, reading one
   data shape. Two exist (`mullet-weather-current`, `mullet-weather-forecast`
-  — see [UI Plugins](#ui-plugins-two-built-rendered-live-on-the-display) below); the
+  — see [UI Plugins](#ui-plugins-six-built-rendered-live-on-the-display) below); the
   rest implied by the plugins above are still to be built.
 
 ### The Designer
@@ -473,16 +473,26 @@ Designer's own palette-drag placeholder cards were intentionally left
 as-is (#23 wired up the live display, not the editor's own preview; see
 [Divergence](#divergence-from-the-original-proposal)).
 
-### UI Plugins (Two built, rendered live on the display)
+### UI Plugins (Six built, rendered live on the display)
 
 `web/src/plugins/` holds real UI plugin implementations, each in its own
 folder per `UIPlugin` (`web/src/shared/types/plugin.ts`): an `id`,
-`dataShape`, `defaultSize`/`minSize`/`maxSize` (grid units), an optional
+`dataShape` (`''` for a widget that needs no data source at all, e.g.
+`mullet-clock` -- `useShapeData` skips fetching entirely for an empty
+shape rather than hitting `/api/data/` with an empty segment),
+`defaultSize`/`minSize`/`maxSize` (grid units), an optional
 `configSchema`, and a `component` receiving `WidgetProps<TData>` --
 `data` (the shape's rows, exactly as `GET /api/data/{shape}` returns
-them -- nothing fetches on the widget's behalf), `config`, `size`
-(current grid units, the one hint a widget gets about its own room --
-there's no ResizeObserver or pixel measurement), and `theme`.
+them), `config`, `size` (current grid units, the one hint a widget gets
+about its own room -- there's no ResizeObserver or pixel measurement),
+`theme`, and `pluginInstanceId` (the card's own
+`data_plugin_instance_id`, `null` if unset) -- most widgets ignore it
+since `data` already carries their one shape's rows; it exists for a
+widget that needs a *second*, related shape from the same instance (see
+`mullet-calendar-agenda` below). Nothing fetches on a widget's behalf
+beyond that one primary shape -- a widget that wants more (like the
+calendars lookup) calls the display's own `useShapeData` hook itself,
+the same way the framework does.
 
 **Naming**: first-party UI plugin `id`s are prefixed `mullet-` (e.g.
 `mullet-weather-current`) to leave the unprefixed namespace free for
@@ -490,12 +500,10 @@ community-contributed plugins once third-party UI (and data) plugins
 are possible -- there's no registry-side enforcement of this today, just
 a convention to follow when adding a plugin. It's go-forward only:
 existing data plugin `id`s (`clock`, `openweathermap`, `open-meteo`,
-`ics-feed`) are *not* retroactively renamed, since `id` is persisted in
-`data_plugin_instances.plugin_id` and a rename would break every
-already-configured instance in a real deployment; UI plugin `id`s carry
-no such persisted-data risk yet since nothing writes `ui_plugin_id`
-outside this session's own test data, but the two shipped here still
-follow the convention for consistency. Two UI plugins exist:
+`ics-feed`, `msgraph-calendar`, `msgraph-todo`) are *not* retroactively
+renamed, since `id` is persisted in `data_plugin_instances.plugin_id`
+and a rename would break every already-configured instance in a real
+deployment. Six UI plugins exist:
 
 - **`mullet-weather-current`**: temp, condition glyph, high/low, humidity,
   wind speed. Drops the secondary stats when `size` is small (`≤2` grid
@@ -504,12 +512,38 @@ follow the convention for consistency. Two UI plugins exist:
   precip chance), the day count itself capped by both a `days` config
   option and by `size.w` (a narrow card shows 2 days, not all 5,
   squeezed into columns).
+- **`mullet-calendar-agenda`** (#26): a rolling N-day list (`days`
+  config, default 5) grouped by day, all-day events as a colored badge
+  above timed ones, timed ones sorted and shown with their time. Reads
+  `events` as its primary shape plus `calendars` as a second one (via
+  `pluginInstanceId`) to color-code each entry by its real calendar
+  color (`calendars.color`, e.g. `ics-feed`'s configured `color` field,
+  or Microsoft Graph's `hexColor`) -- a calendar with no color set falls
+  back to a deterministic hash-based one (`web/src/plugins/shared/idColor.ts`)
+  so entries still stay visually distinct rather than all rendering
+  identically.
+- **`mullet-task-list`** (#26): tasks grouped by list (reads `task_lists`
+  the same second-shape way, for real list names instead of raw IDs),
+  each row showing completion (a checkbox, struck through once done --
+  hidden entirely unless `showCompleted` is on), due date, and a `!`
+  marker for `priority: "high"`.
+- **`mullet-meal-plan`** (#26): the same `events` shape as
+  calendar-agenda, but filtered to titles/descriptions containing a
+  configured `keyword` (default `"meal"`) and laid out as a day-column
+  grid (`days` config, capped by `size.w` the same way
+  `mullet-weather-forecast` caps its own day columns) rather than a
+  list -- meant for events like "Dinner: Tacos", stripping the
+  `"keyword:"` prefix if the title happens to start with one.
+- **`mullet-clock`** (#26): a live clock (`setInterval`, same pattern as
+  the display's own `TopBar`), 12h/24h and show-date as config options.
+  The one built-in UI plugin with `dataShape: ''`.
 
-Both render their **own** full card chrome from `theme` (background,
+All six render their **own** full card chrome from `theme` (background,
 border, radius, blur, opacity, font) -- there's no separate wrapping
 `Card` component in this design, matching how the Designer's own
-placeholder cards already work. Both key their icon off the shape row's
-`condition` string (`"Clear"`, `"Rain"`, ...), not its `icon` field: the
+placeholder cards already work. The two weather widgets key their icon
+off the shape row's `condition` string (`"Clear"`, `"Rain"`, ...), not
+its `icon` field: the
 two weather data plugins don't share an icon vocabulary (openweathermap
 passes through OWM's own codes like `"02d"`; open-meteo emits plain
 keywords like `"clouds"`) but both normalize `condition` to the same
@@ -525,7 +559,27 @@ is now actually called, by `DisplayCard` (`web/src/display/DisplayCard.tsx`)
 `shapes.WeatherCurrent` gained a `wind_speed` column (migration
 `007_weather_wind_speed.sql`) to back the wind reading -- it didn't
 exist before `mullet-weather-current` needed to display it. Both weather data
-plugins (openweathermap, open-meteo) were updated to populate it.
+plugins (openweathermap, open-meteo) were updated to populate it. Same
+pattern for `mullet-task-list`'s priority marker: `shapes.Task` gained a
+`priority` column (migration `009_task_priority.sql`, `"low"`/`"normal"`/
+`"high"`, matching Microsoft Graph's own `Importance` values) so far
+only `msgraph-todo` populates.
+
+`mullet-calendar-agenda`/`mullet-task-list`'s real calendar/list names
+and colors come from `GET /api/data/calendars`/`/task_lists` -- the
+`calendars`/`task_lists` metadata tables (see [Write path](#write-path))
+registered as ordinary readable shapes in `internal/db/data_api.go`'s
+`shapeTables` map, reusing the same generic reader as any other shape
+(both tables already have the `plugin_instance_id` column it needs) --
+rather than a bespoke endpoint.
+
+A real bug this issue's live testing caught, worth remembering for any
+future date-grouping widget: `calendar-agenda`/`meal-plan` both group
+events into calendar days by the *viewer's local* date, not UTC's
+(`localDayKey` in each, deliberately not `Date.toISOString()`) -- a
+kiosk display's "today" means the viewer's wall-clock today, and using
+UTC's calendar date instead is off by a day for roughly half the
+world's timezones at any given moment.
 
 ### The Display Renderer
 

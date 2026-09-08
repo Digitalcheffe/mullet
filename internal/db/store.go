@@ -329,8 +329,8 @@ func writeTasks(tx *sql.Tx, pluginInstanceID int, rows []any) error {
 
 	insertTask, err := tx.Prepare(`
 		INSERT INTO shape_tasks
-			(id, plugin_instance_id, task_list_id, title, completed, due_date, sort_order)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+			(id, plugin_instance_id, task_list_id, title, completed, due_date, sort_order, priority)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return fmt.Errorf("preparing shape_tasks insert: %w", err)
@@ -354,7 +354,11 @@ func writeTasks(tx *sql.Tx, pluginInstanceID int, rows []any) error {
 		}
 
 		for _, t := range listTasks {
-			if _, err := insertTask.Exec(t.ID, pluginInstanceID, taskListID, t.Title, t.Completed, t.DueDate, t.SortOrder); err != nil {
+			priority := t.Priority
+			if priority == "" {
+				priority = "normal"
+			}
+			if _, err := insertTask.Exec(t.ID, pluginInstanceID, taskListID, t.Title, t.Completed, t.DueDate, t.SortOrder, priority); err != nil {
 				return fmt.Errorf("inserting shape_tasks row %q: %w", t.ID, err)
 			}
 		}

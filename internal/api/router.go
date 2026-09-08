@@ -70,6 +70,7 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 
 	adminMux.HandleFunc("GET /api/admin/displays", handleListDisplays(sqldb))
 	adminMux.HandleFunc("POST /api/admin/displays", handleCreateDisplay(sqldb))
+	adminMux.HandleFunc("GET /api/admin/displays/{id}", handleGetDisplay(sqldb))
 	adminMux.HandleFunc("PUT /api/admin/displays/{id}", handleUpdateDisplay(sqldb))
 	adminMux.HandleFunc("DELETE /api/admin/displays/{id}", handleDeleteDisplay(sqldb))
 

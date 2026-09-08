@@ -6,12 +6,21 @@ import 'react-resizable/css/styles.css';
 import { useApiFetch } from '../auth/useApiFetch';
 import ThemeTokenFields from '../components/ThemeTokenFields';
 import type { ThemeTokens } from '../../shared/themes/tokens';
+import type { ConfigField } from '../../shared/types/plugin';
+import { getUIPlugin, uiPlugins } from '../../plugins/registry';
 import './DesignerPage.css';
+
+interface Display {
+  id: number;
+  name: string;
+  slug: string;
+}
 
 interface Screen {
   id: number;
   display_id: number;
   name: string;
+  position: number;
   columns: number;
   row_height: number;
   gap: number;
@@ -42,38 +51,7 @@ interface PluginInstance {
   instance_name: string;
 }
 
-interface PaletteItem {
-  uiPluginId: string;
-  label: string;
-  // The data shape this widget reads, or null if it needs no data
-  // source (e.g. clock reads the browser's own time). No server-side UI
-  // plugin registry exists yet (see architecture.md), so this palette
-  // is a hand-maintained list of every built UI plugin -- some (e.g.
-  // Home Status) already have a compiled data plugin to feed them
-  // (home-assistant); others (Server Health, Media Now Playing,
-  // Package Tracker) exist ahead of theirs, so a card of that type just
-  // reads no rows until a matching data plugin ships.
-  dataShape: string | null;
-}
-
-const PALETTE: PaletteItem[] = [
-  { uiPluginId: 'mullet-clock', label: 'Clock', dataShape: null },
-  { uiPluginId: 'mullet-weather-current', label: 'Weather (Current)', dataShape: 'weather_current' },
-  { uiPluginId: 'mullet-weather-forecast', label: 'Weather (Forecast)', dataShape: 'weather_forecast' },
-  { uiPluginId: 'mullet-calendar-agenda', label: 'Calendar Agenda', dataShape: 'events' },
-  { uiPluginId: 'mullet-task-list', label: 'Task List', dataShape: 'tasks' },
-  { uiPluginId: 'mullet-meal-plan', label: 'Meal Plan', dataShape: 'events' },
-  { uiPluginId: 'mullet-home-status', label: 'Home Status', dataShape: 'home_devices' },
-  { uiPluginId: 'mullet-server-health', label: 'Server Health', dataShape: 'infrastructure' },
-  { uiPluginId: 'mullet-media-now-playing', label: 'Media (Now Playing)', dataShape: 'media_status' },
-  { uiPluginId: 'mullet-package-tracker', label: 'Package Tracker', dataShape: 'packages' },
-];
-
 const DEFAULT_CARD_SIZE = { w: 4, h: 3 };
-
-function paletteItemFor(uiPluginId: string): PaletteItem | undefined {
-  return PALETTE.find((p) => p.uiPluginId === uiPluginId);
-}
 
 function dataSourceLabel(card: Card, instances: PluginInstance[]): string {
   if (card.data_plugin_instance_id == null) return 'No data source';
@@ -86,11 +64,13 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
 }
 
 export default function DesignerPage() {
-  const { screenId } = useParams<{ displayId: string; screenId: string }>();
+  const { displayId, screenId } = useParams<{ displayId: string; screenId: string }>();
   const navigate = useNavigate();
   const apiFetch = useApiFetch();
   const { width, containerRef, mounted } = useContainerWidth();
 
+  const [display, setDisplay] = useState<Display | null>(null);
+  const [screens, setScreens] = useState<Screen[]>([]);
   const [screen, setScreen] = useState<Screen | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
   const [manifests, setManifests] = useState<PluginManifest[]>([]);
@@ -101,18 +81,22 @@ export default function DesignerPage() {
 
   const load = useCallback(() => {
     return Promise.all([
+      apiFetch(`/api/admin/displays/${displayId}`).then((r) => r.json()),
+      apiFetch(`/api/admin/displays/${displayId}/screens`).then((r) => r.json()),
       apiFetch(`/api/admin/screens/${screenId}`).then((r) => r.json()),
       apiFetch(`/api/admin/screens/${screenId}/cards`).then((r) => r.json()),
       apiFetch('/api/admin/plugins').then((r) => r.json()),
       apiFetch('/api/admin/plugins/instances').then((r) => r.json()),
-    ]).then(([s, c, m, i]) => {
+    ]).then(([d, scr, s, c, m, i]) => {
+      setDisplay(d);
+      setScreens([...scr].sort((a: Screen, b: Screen) => a.position - b.position));
       setScreen(s);
       setCards(c);
       setManifests(m);
       setInstances(i);
       setLoading(false);
     });
-  }, [apiFetch, screenId]);
+  }, [apiFetch, displayId, screenId]);
 
   useEffect(() => {
     load();
@@ -225,34 +209,50 @@ export default function DesignerPage() {
 
   return (
     <div className="designer-page">
-      <div className="designer-header">
-        <button className="btn-secondary" onClick={() => navigate('/admin/displays')}>
-          ← Back to Displays
+      <div className="designer-toolbar">
+        <button className="designer-back" onClick={() => navigate('/admin/displays')} title="Back to Displays">
+          ←
         </button>
-        <div>
-          <h1>{screen.name}</h1>
-          <p className="designer-subtitle">
-            {screen.columns} columns &middot; {screen.row_height}px rows &middot; {screen.gap}px gap
-          </p>
+        <div className="designer-breadcrumb">
+          <span className="designer-breadcrumb-display">{display?.name ?? 'Display'}</span>
+          <span className="designer-breadcrumb-chevron">›</span>
+          <span className="designer-breadcrumb-screen">{screen.name}</span>
         </div>
+        {screens.length > 1 && (
+          <div className="designer-screen-tabs">
+            {screens.map((s) => (
+              <button
+                key={s.id}
+                className={`designer-screen-tab${s.id === screen.id ? ' active' : ''}`}
+                onClick={() => s.id !== screen.id && navigate(`/admin/displays/${displayId}/screens/${s.id}/design`)}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="designer-toolbar-spacer" />
+        <p className="designer-subtitle">
+          {screen.columns} columns &middot; {screen.row_height}px rows &middot; {screen.gap}px gap
+        </p>
       </div>
 
       <div className="designer-layout">
         <aside className="designer-palette">
           <h2>UI Plugins</h2>
           <p className="palette-help">Drag onto the grid to place a card.</p>
-          {PALETTE.map((item) => (
+          {uiPlugins.map((plugin) => (
             <div
-              key={item.uiPluginId}
+              key={plugin.id}
               className="palette-item"
               draggable
               onDragStart={(e) => {
-                draggingPluginRef.current = item.uiPluginId;
+                draggingPluginRef.current = plugin.id;
                 e.dataTransfer.effectAllowed = 'copy';
-                e.dataTransfer.setData('text/plain', item.uiPluginId);
+                e.dataTransfer.setData('text/plain', plugin.id);
               }}
             >
-              {item.label}
+              {plugin.name}
             </div>
           ))}
         </aside>
@@ -271,10 +271,10 @@ export default function DesignerPage() {
               onDrop={handleDrop}
             >
               {cards.map((card) => {
-                const palette = paletteItemFor(card.ui_plugin_id);
+                const plugin = getUIPlugin(card.ui_plugin_id);
                 return (
                   <div key={String(card.id)} className="designer-card">
-                    <div className="designer-card-label">{palette?.label ?? card.ui_plugin_id}</div>
+                    <div className="designer-card-label">{plugin?.name ?? card.ui_plugin_id}</div>
                     <div className="designer-card-source">{dataSourceLabel(card, instances)}</div>
                     <button className="card-settings-btn" title="Settings" onClick={() => setSelectedCardId(card.id)}>
                       ⚙
@@ -295,7 +295,7 @@ export default function DesignerPage() {
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
             <CardSettingsPanel
               card={selectedCard}
-              paletteItem={paletteItemFor(selectedCard.ui_plugin_id)}
+              uiPlugin={getUIPlugin(selectedCard.ui_plugin_id)}
               instances={instances}
               manifests={manifests}
               onSave={(values) => handleSaveCardSettings(selectedCard, values)}
@@ -310,7 +310,7 @@ export default function DesignerPage() {
 
 interface CardSettingsPanelProps {
   card: Card;
-  paletteItem: PaletteItem | undefined;
+  uiPlugin: ReturnType<typeof getUIPlugin>;
   instances: PluginInstance[];
   manifests: PluginManifest[];
   onSave: (values: { data_plugin_instance_id: number | null; config: unknown; theme_override: Partial<ThemeTokens> | null }) => Promise<void>;
@@ -322,39 +322,128 @@ interface CardSettingsPanelProps {
 // take over the whole display's look (font, spacing, etc.).
 const CARD_OVERRIDE_FIELDS: (keyof ThemeTokens)[] = ['cardBackground', 'accentColor', 'opacity'];
 
-function CardSettingsPanel({ card, paletteItem, instances, manifests, onSave, onCancel }: CardSettingsPanelProps) {
+// One bound input per configSchema entry -- mirrors the shape of
+// plugindata.SetupField's own admin-side rendering (ManifestForm.tsx)
+// for a data plugin's setup form, just keyed on a UI plugin's
+// ConfigField instead. Replaces what used to be a raw "paste JSON"
+// textarea: every value here is guaranteed to match what the widget's
+// own component actually reads out of `config`, since it's driven by
+// the same configSchema the widget declares.
+function ConfigFieldInput({
+  fieldKey,
+  field,
+  value,
+  onChange,
+}: {
+  fieldKey: string;
+  field: ConfigField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  switch (field.type) {
+    case 'toggle':
+      return (
+        <label className="toggle-row" key={fieldKey}>
+          <span>{field.label}</span>
+          <input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />
+        </label>
+      );
+    case 'select':
+      return (
+        <label className="field" key={fieldKey}>
+          <span className="kicker">{field.label}</span>
+          <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
+            {(field.options ?? []).map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          {field.helpText && <span className="field-help">{field.helpText}</span>}
+        </label>
+      );
+    case 'multi-select': {
+      const selected = Array.isArray(value) ? value.map(String) : [];
+      return (
+        <label className="field" key={fieldKey}>
+          <span className="kicker">{field.label}</span>
+          <select
+            multiple
+            value={selected}
+            onChange={(e) => onChange(Array.from(e.target.selectedOptions).map((o) => o.value))}
+          >
+            {(field.options ?? []).map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          {field.helpText && <span className="field-help">{field.helpText}</span>}
+        </label>
+      );
+    }
+    case 'number':
+      return (
+        <label className="field" key={fieldKey}>
+          <span className="kicker">{field.label}</span>
+          <input
+            type="number"
+            value={typeof value === 'number' ? value : ''}
+            onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
+          />
+          {field.helpText && <span className="field-help">{field.helpText}</span>}
+        </label>
+      );
+    case 'color':
+      return (
+        <label className="field" key={fieldKey}>
+          <span className="kicker">{field.label}</span>
+          <input type="color" value={typeof value === 'string' ? value : '#000000'} onChange={(e) => onChange(e.target.value)} />
+          {field.helpText && <span className="field-help">{field.helpText}</span>}
+        </label>
+      );
+    case 'text':
+    default:
+      return (
+        <label className="field" key={fieldKey}>
+          <span className="kicker">{field.label}</span>
+          <input type="text" value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} />
+          {field.helpText && <span className="field-help">{field.helpText}</span>}
+        </label>
+      );
+  }
+}
+
+function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCancel }: CardSettingsPanelProps) {
   const [dataPluginInstanceId, setDataPluginInstanceId] = useState<number | null>(card.data_plugin_instance_id ?? null);
-  const [configText, setConfigText] = useState(JSON.stringify(card.config ?? {}, null, 2));
+  const configSchema = useMemo(() => uiPlugin?.configSchema ?? {}, [uiPlugin]);
+  const [configValues, setConfigValues] = useState<Record<string, unknown>>(() => {
+    const initial: Record<string, unknown> = {};
+    for (const [key, field] of Object.entries(configSchema)) {
+      const existing = (card.config as Record<string, unknown> | undefined)?.[key];
+      initial[key] = existing ?? field.default;
+    }
+    return initial;
+  });
   const [overrideEnabled, setOverrideEnabled] = useState(card.theme_override != null);
   const [themeOverride, setThemeOverride] = useState<Partial<ThemeTokens>>(card.theme_override ?? {});
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const compatibleInstances = useMemo(() => {
-    if (!paletteItem?.dataShape) return [];
+    if (!uiPlugin?.dataShape) return [];
     const manifestsById = new Map(manifests.map((m) => [m.id, m]));
-    return instances.filter((inst) => manifestsById.get(inst.plugin_id)?.data_shapes?.includes(paletteItem.dataShape!));
-  }, [instances, manifests, paletteItem]);
+    return instances.filter((inst) => manifestsById.get(inst.plugin_id)?.data_shapes?.includes(uiPlugin.dataShape));
+  }, [instances, manifests, uiPlugin]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-
-    let config: unknown = {};
-    if (configText.trim() !== '') {
-      try {
-        config = JSON.parse(configText);
-      } catch {
-        setError('Config must be valid JSON');
-        return;
-      }
-    }
-
     setSubmitting(true);
     try {
       await onSave({
         data_plugin_instance_id: dataPluginInstanceId,
-        config,
+        config: configValues,
         theme_override: overrideEnabled ? themeOverride : null,
       });
     } catch (err) {
@@ -366,14 +455,14 @@ function CardSettingsPanel({ card, paletteItem, instances, manifests, onSave, on
 
   return (
     <form className="manifest-form" onSubmit={handleSubmit}>
-      <h2>{paletteItem?.label ?? card.ui_plugin_id}</h2>
+      <h2>{uiPlugin?.name ?? card.ui_plugin_id}</h2>
       {error && (
         <p className="form-error" role="alert">
           {error}
         </p>
       )}
 
-      {paletteItem?.dataShape ? (
+      {uiPlugin?.dataShape ? (
         <label className="field">
           <span className="kicker">Data source</span>
           <select
@@ -388,17 +477,26 @@ function CardSettingsPanel({ card, paletteItem, instances, manifests, onSave, on
             ))}
           </select>
           {compatibleInstances.length === 0 && (
-            <span className="field-help">No configured plugin instance produces {paletteItem.dataShape} data yet.</span>
+            <span className="field-help">No configured plugin instance produces {uiPlugin.dataShape} data yet.</span>
           )}
         </label>
       ) : (
         <p className="field-help">This widget doesn&rsquo;t use a data source.</p>
       )}
 
-      <label className="field">
-        <span className="kicker">Config (JSON)</span>
-        <textarea rows={5} value={configText} onChange={(e) => setConfigText(e.target.value)} spellCheck={false} />
-      </label>
+      {Object.keys(configSchema).length === 0 ? (
+        <p className="field-help">This widget has no configurable options.</p>
+      ) : (
+        Object.entries(configSchema).map(([key, field]) => (
+          <ConfigFieldInput
+            key={key}
+            fieldKey={key}
+            field={field}
+            value={configValues[key]}
+            onChange={(v) => setConfigValues((prev) => ({ ...prev, [key]: v }))}
+          />
+        ))
+      )}
 
       <label className="toggle-row">
         <span>Override theme for this card</span>

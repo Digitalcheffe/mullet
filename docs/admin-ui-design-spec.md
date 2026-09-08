@@ -33,7 +33,7 @@ Typography: **Space Grotesk** (600–700) for headings/numbers, **Manrope** (400
 
 Shape language: 10–16px border radius depending on element size (small chips ~8-9px, cards 12-16px), 1px hairline borders in `--border`, soft low-opacity shadows only on elevated/floating elements (stat cards flat, popovers/selected states get shadow).
 
-These tokens are a starting point pulled from an earlier direction exploration — Ryan hasn't explicitly signed off on the palette/type yet, so treat as provisional until confirmed.
+**Confirmed** (issue #46): these tokens have been in continuous production use across every admin page shipped since (`web/src/admin/adminTheme.css` is the literal source of truth now — copy values from there, not here, if the two ever drift). No revisions requested across dozens of merged PRs building on top of them.
 
 ## Screen 1 — Admin UI (Dashboard)
 
@@ -58,8 +58,10 @@ Deliberately different chrome from the rest of Admin UI — full-bleed, toolbar-
 
 **Right: Inspector** (280px) — bound to whichever card is selected. Fields shown: Data Source (select, populated from configured plugin instances), a numeric stepper (Days Shown), two toggles (a `configSchema`-driven boolean, and Theme Override), and a destructive "Remove card" action at the bottom.
 
-## Open questions (flag these before building for real)
+**As shipped (issue #46):** the toolbar (back arrow, breadcrumb, screen tabs) and palette landed close to this mock -- the palette now reads the real UI plugin registry (`web/src/plugins/registry.ts`) instead of a hand-typed list, so it can never drift out of sync with what's actually built. Data Source + every `configSchema` field (not just one boolean -- whatever the widget declares: toggles, selects, numbers, etc.) render as real bound inputs (`ConfigFieldInput` in `DesignerPage.tsx`), same idea as the mocked stepper/toggle, generalized to any widget's schema rather than one hardcoded example. The Inspector itself is a modal triggered by a card's own ⚙ button rather than an always-visible right pane, and there's no Preview mode or manual Save button in the toolbar -- every change (drag, resize, or a settings-panel save) persists immediately, so a separate "Save" action would have nothing queued to commit. Theme swatch/name in the toolbar wasn't built. See [The Designer](../architecture.md#the-designer) for the full current picture.
 
-1. **Nav placement of Designer** — is it a peer top-level area (as mocked, its own sidebar item), or should it only be reachable by clicking "Open in Designer" from a specific display in the Displays list (removing it from the sidebar entirely)?
-2. **Color/type direction** — the coral/warm-neutral palette above was carried over from an earlier exploration and hasn't been explicitly approved. Worth a deliberate pass before it goes into real components.
-3. **Not yet mocked**: first-run setup wizard, login, manifest-driven plugin setup form, theme editor, client pairing/approval flow, settings page.
+## Open questions -- resolved (issue #46)
+
+1. **Nav placement of Designer** — **resolved: not a sidebar item.** It's reached only via a "Design" link on a screen's row in Displays (`DisplaysPage.tsx`) or a display's "Open in Designer" link on the Dashboard, matching the second option this question raised. The sidebar (`AdminLayout.tsx`) lists Dashboard, Data Plugins, Displays, Themes, Clients, Settings only.
+2. **Color/type direction** — **resolved: confirmed**, see the tokens section above.
+3. **Not yet mocked** (still true, none of these have a mockup): first-run setup wizard, login, manifest-driven plugin setup form, theme editor, client pairing/approval flow, settings page. All are built regardless -- see `architecture.md` for each.

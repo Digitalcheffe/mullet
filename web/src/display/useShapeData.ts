@@ -22,6 +22,10 @@ export function useShapeData(shape: string, pluginInstanceID: number | null) {
   const [data, setData] = useState<Record<string, unknown>[]>([]);
 
   useEffect(() => {
+    // A widget with no data needs at all (the clock) declares
+    // dataShape: '' -- nothing to fetch, and `/api/data/` (empty shape
+    // segment) isn't even a valid route.
+    if (!shape) return;
     let cancelled = false;
 
     async function load() {

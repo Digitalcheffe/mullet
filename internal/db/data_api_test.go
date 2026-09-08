@@ -65,6 +65,43 @@ func TestReadShapeReturnsRowsWithSourceAndLastUpdated(t *testing.T) {
 	}
 }
 
+// TestReadShapeReadsCalendarsAndTaskLists guards issue #26's reuse of
+// the generic shape reader for the calendars/task_lists metadata tables
+// -- a UI plugin needs a way to look up a real calendar/list name for
+// an event/task's calendar_id/task_list_id, and this is what serves it
+// (GET /api/data/calendars, /api/data/task_lists) without a bespoke
+// endpoint.
+func TestReadShapeReadsCalendarsAndTaskLists(t *testing.T) {
+	sqldb := newTestDB(t) // seeds plugin instance id=1, plugin_id='openweathermap'
+
+	if _, err := sqldb.Exec(
+		`INSERT INTO calendars (plugin_instance_id, external_id, name, color) VALUES (1, 'cal-1', 'Work', '#4285F4')`,
+	); err != nil {
+		t.Fatalf("seeding calendars row: %v", err)
+	}
+	if _, err := sqldb.Exec(
+		`INSERT INTO task_lists (plugin_instance_id, external_id, name) VALUES (1, 'list-1', 'Tasks')`,
+	); err != nil {
+		t.Fatalf("seeding task_lists row: %v", err)
+	}
+
+	calRows, _, _, err := ReadShape(sqldb, "calendars", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadShape(calendars): %v", err)
+	}
+	if len(calRows) != 1 || calRows[0]["name"] != "Work" || calRows[0]["color"] != "#4285F4" {
+		t.Errorf("calendars rows = %+v, want one row {name: Work, color: #4285F4}", calRows)
+	}
+
+	listRows, _, _, err := ReadShape(sqldb, "task_lists", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadShape(task_lists): %v", err)
+	}
+	if len(listRows) != 1 || listRows[0]["name"] != "Tasks" {
+		t.Errorf("task_lists rows = %+v, want one row {name: Tasks}", listRows)
+	}
+}
+
 func TestReadShapeFiltersByPluginInstance(t *testing.T) {
 	sqldb := newTestDB(t) // seeds plugin instance id=1
 

@@ -214,6 +214,11 @@ func toShape(tk models.TodoTaskable, list taskListRef, sortOrder int) (shapes.Ta
 		}
 	}
 
+	priority := "normal"
+	if imp := tk.GetImportance(); imp != nil {
+		priority = imp.String() // "low"/"normal"/"high", matching shapes.Task.Priority
+	}
+
 	return shapes.Task{
 		// Namespaced by list, matching msgraphcalendar's event IDs.
 		ID:                 fmt.Sprintf("%s@%s", id, list.id),
@@ -221,6 +226,7 @@ func toShape(tk models.TodoTaskable, list taskListRef, sortOrder int) (shapes.Ta
 		Completed:          completed,
 		DueDate:            dueDate,
 		SortOrder:          sortOrder,
+		Priority:           priority,
 		TaskListExternalID: list.id,
 		TaskListName:       list.name,
 	}, nil

@@ -8,9 +8,20 @@
 import type { UIPlugin } from '../shared/types/plugin';
 import { weatherCurrentPlugin } from './weather-current/WeatherCurrentWidget';
 import { weatherForecastPlugin } from './weather-forecast/WeatherForecastWidget';
+import { calendarAgendaPlugin } from './calendar-agenda/CalendarAgendaWidget';
+import { taskListPlugin } from './task-list/TaskListWidget';
+import { mealPlanPlugin } from './meal-plan/MealPlanWidget';
+import { clockPlugin } from './clock/ClockWidget';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const uiPlugins: UIPlugin<any>[] = [weatherCurrentPlugin, weatherForecastPlugin];
+export const uiPlugins: UIPlugin<any>[] = [
+  weatherCurrentPlugin,
+  weatherForecastPlugin,
+  calendarAgendaPlugin,
+  taskListPlugin,
+  mealPlanPlugin,
+  clockPlugin,
+];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getUIPlugin(id: string): UIPlugin<any> | undefined {

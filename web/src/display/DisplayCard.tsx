@@ -48,5 +48,13 @@ function PluginBody({
 }) {
   const data = useShapeData(plugin.dataShape, card.data_plugin_instance_id);
   const Component = plugin.component;
-  return <Component data={data} config={card.config} size={{ w: card.w, h: card.h }} theme={theme} />;
+  return (
+    <Component
+      data={data}
+      config={card.config}
+      size={{ w: card.w, h: card.h }}
+      theme={theme}
+      pluginInstanceId={card.data_plugin_instance_id}
+    />
+  );
 }

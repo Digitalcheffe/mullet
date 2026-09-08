@@ -20,14 +20,15 @@ type Client struct {
 	OfflineMode string
 	Platform    *string
 	AppVersion  *string
+	IPAddress   *string
 	CreatedAt   time.Time
 }
 
-const clientColumns = `id, client_id, name, display_id, status, last_seen_at, offline_mode, platform, app_version, created_at`
+const clientColumns = `id, client_id, name, display_id, status, last_seen_at, offline_mode, platform, app_version, ip_address, created_at`
 
 func scanClient(row interface{ Scan(...any) error }) (Client, error) {
 	var c Client
-	if err := row.Scan(&c.ID, &c.ClientID, &c.Name, &c.DisplayID, &c.Status, &c.LastSeenAt, &c.OfflineMode, &c.Platform, &c.AppVersion, &c.CreatedAt); err != nil {
+	if err := row.Scan(&c.ID, &c.ClientID, &c.Name, &c.DisplayID, &c.Status, &c.LastSeenAt, &c.OfflineMode, &c.Platform, &c.AppVersion, &c.IPAddress, &c.CreatedAt); err != nil {
 		return Client{}, err
 	}
 	return c, nil
@@ -38,14 +39,25 @@ func scanClient(row interface{ Scan(...any) error }) (Client, error) {
 // idempotent on client_id: a client that re-sends the same
 // registration (a lost response, or just re-registering defensively on
 // every boot before it's confirmed pairing succeeded) gets back its
-// existing record rather than an error, so retrying is always safe.
-func RegisterClient(sqldb *sql.DB, clientID, name string, platform, appVersion *string) (Client, error) {
+// existing record rather than an error, so retrying is always safe --
+// but platform/app_version/ip_address are still refreshed on that
+// repeat attempt, since any of the three can legitimately change
+// between one registration and the next (an app update, a DHCP lease
+// renewal) and there's no reason to keep serving stale values just
+// because the client_id itself didn't change.
+func RegisterClient(sqldb *sql.DB, clientID, name string, platform, appVersion, ipAddress *string) (Client, error) {
 	result, err := sqldb.Exec(
-		`INSERT INTO clients (client_id, name, platform, app_version) VALUES (?, ?, ?, ?)`,
-		clientID, name, platform, appVersion,
+		`INSERT INTO clients (client_id, name, platform, app_version, ip_address) VALUES (?, ?, ?, ?, ?)`,
+		clientID, name, platform, appVersion, ipAddress,
 	)
 	if err != nil {
 		if isForeignKeyViolation(err) {
+			if _, err := sqldb.Exec(
+				`UPDATE clients SET platform = ?, app_version = ?, ip_address = ? WHERE client_id = ?`,
+				platform, appVersion, ipAddress, clientID,
+			); err != nil {
+				return Client{}, fmt.Errorf("refreshing client %q: %w", clientID, err)
+			}
 			return GetClientByClientID(sqldb, clientID)
 		}
 		return Client{}, fmt.Errorf("registering client %q: %w", clientID, err)
@@ -104,12 +116,13 @@ func ListClients(sqldb *sql.DB) ([]Client, error) {
 	return clients, rows.Err()
 }
 
-// TouchClientLastSeen stamps last_seen_at to now for a client's config
-// poll. Returns ErrNotFound if clientID isn't registered, so the poller
-// can tell its caller to re-register rather than polling forever
-// against an ID the server has no record of.
-func TouchClientLastSeen(sqldb *sql.DB, clientID string) error {
-	result, err := sqldb.Exec(`UPDATE clients SET last_seen_at = CURRENT_TIMESTAMP WHERE client_id = ?`, clientID)
+// TouchClientLastSeen stamps last_seen_at to now and refreshes
+// ip_address for a client's config poll. Returns ErrNotFound if
+// clientID isn't registered, so the poller can tell its caller to
+// re-register rather than polling forever against an ID the server has
+// no record of.
+func TouchClientLastSeen(sqldb *sql.DB, clientID, ipAddress string) error {
+	result, err := sqldb.Exec(`UPDATE clients SET last_seen_at = CURRENT_TIMESTAMP, ip_address = ? WHERE client_id = ?`, ipAddress, clientID)
 	if err != nil {
 		return fmt.Errorf("touching client %q: %w", clientID, err)
 	}

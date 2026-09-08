@@ -331,7 +331,7 @@ one.
 | `screens` | A page within a display (`ON DELETE CASCADE` from `displays`). Owns its own grid (`columns`, `row_height`, `gap`, all in pixels except `columns`) rather than inheriting one from its display; `position` orders rotation |
 | `cards` | A positioned UI plugin on a screen's grid (`ON DELETE CASCADE` from `screens`). `x`/`y`/`w`/`h` are grid units. `data_plugin_instance_id` (nullable, `ON DELETE SET NULL`) is which configured plugin instance it reads from — nullable because a card's UI plugin might need no data (clock) or the admin hasn't wired one up yet; `SET NULL` rather than cascade so deleting an unrelated data plugin instance doesn't silently delete a card |
 | `oauth_tokens` | One row per OAuth2 plugin instance's access/refresh token (`internal/db/migrations/008_oauth_tokens.sql`, `ON DELETE CASCADE` from `data_plugin_instances`, `UNIQUE` on `plugin_instance_id`) — see [OAuth2](#oauth2-built) below |
-| `clients` | Registered dedicated-client-app devices (`internal/db/migrations/010_clients.sql`, #29). `client_id` is generated *by the client itself* (a pairing code) and sent at registration, `UNIQUE` -- registering the same `client_id` twice is idempotent, not an error, since a client can't tell whether its first registration actually landed. `display_id` nullable FK to `displays` (no `ON DELETE CASCADE`: deleting a display a client is assigned to is blocked, same as `theme_id`, until the client is reassigned or removed). `status` is only ever the admin's own lifecycle call (`pending`/`approved`/`rejected`) -- see [Client Connection Model](#client-connection-model-built) for why "offline" isn't a stored status |
+| `clients` | Registered client devices, dedicated app or browser alike (`internal/db/migrations/010_clients.sql` + `011_client_ip.sql`, #29/#30). `client_id` is generated *by the client itself* (a pairing code) and sent at registration, `UNIQUE` -- registering the same `client_id` twice is idempotent, not an error, since a client can't tell whether its first registration actually landed. `display_id` nullable FK to `displays` (no `ON DELETE CASCADE`: deleting a display a client is assigned to is blocked, same as `theme_id`, until the client is reassigned or removed). `status` is only ever the admin's own lifecycle call (`pending`/`approved`/`rejected`) -- see [Client Connection Model](#client-connection-model-built) for why "offline" isn't a stored status. `ip_address` is a display-only hint for telling pending clients apart, refreshed on every registration/poll, not an identity mechanism |
 | `displays.offline_screen_html` | Nullable column added alongside `clients` (same migration): an admin-authored, self-contained offline-screen page for one display. `NULL` means "use the generated default" -- see [Client Connection Model](#client-connection-model-built) |
 
 Every shape table carries `plugin_instance_id` (`ON DELETE CASCADE` from
@@ -340,12 +340,11 @@ additionally cascade from `calendars`/`task_lists`.
 
 CRUD for all tables above is built (see [REST API Routes](#rest-api-routes)
 below), and so is an admin UI to manage all of it, including a
-drag-and-drop Designer for cards and a live display renderer; see
-[Display Hierarchy](#display-hierarchy-built-end-to-end)
-and [Theme Cascade](#theme-cascade-editor-built-display-side-application-planned).
-The one exception is `clients`/`offline_screen_html`: their API is built
-(#29, below), but the admin UI for approving/managing clients lands
-separately with #30.
+drag-and-drop Designer for cards, a live display renderer, and client
+approval/offline-screen config (`/admin/clients`, #30); see
+[Display Hierarchy](#display-hierarchy-built-end-to-end),
+[Theme Cascade](#theme-cascade-editor-built-display-side-application-planned),
+and [Client Connection Model](#client-connection-model-built).
 
 ---
 
@@ -400,11 +399,6 @@ Everything else — `/admin`, `/display/{slug}`, and their static assets —
 falls through to the built frontend's `index.html` (client-side routed
 via react-router). `/display/{slug}` renders the real grid engine now
 (#23), reading its layout from `GET /api/display/{slug}` above.
-
-### Planned
-
-The admin UI consuming the `/api/admin/clients` and
-`/api/admin/displays/{id}/offline-screen` routes above lands with #30.
 
 ---
 
@@ -716,10 +710,10 @@ full `tokens`.
 
 ## Client Connection Model (Built)
 
-*Server-side API only (#29) -- the dedicated client apps themselves and
-the admin UI to manage clients (#30) are still planned, called out
-below. Full detail, including the registration pairing flow,
-offline-mode design, and per-platform kiosk setup, is in
+*Server-side API (#29) and its admin UI (#30) -- the dedicated client
+apps themselves are still planned, called out below. Full detail,
+including the registration pairing flow, offline-mode design, and
+per-platform kiosk setup, is in
 [`docs/architecture_1.md` § Client`](docs/architecture_1.md#client) —
 summarized here.*
 
@@ -727,10 +721,10 @@ A display is still reachable as plain `GET /display/{slug}` in a
 browser today, with no registration and no offline fallback beyond
 whatever the browser itself shows when the server is unreachable --
 that path stays supported indefinitely for devices where installing a
-client isn't practical. #29 built the server-side half of a second,
-recommended path -- a lightweight dedicated client app -- without the
-client app itself (a separate repo, per `docs/architecture_1.md`'s
-Platforms table) or the admin UI to approve/manage clients (#30):
+client isn't practical. #29/#30 built the server-side half of a
+second, recommended path -- a lightweight dedicated client app -- and
+its admin UI, without the client app itself (a separate repo, per
+`docs/architecture_1.md`'s Platforms table):
 
 - **Registration** (`POST /api/clients/register`): the client
   generates its own `client_id` locally (a short pairing code it shows
@@ -738,8 +732,16 @@ Platforms table) or the admin UI to approve/manage clients (#30):
   Idempotent on `client_id` -- registering twice returns the existing
   record rather than erroring, since a client that loses its first
   response can't tell whether registration actually landed, and a
-  client is expected to be able to safely re-send it. Always starts (or
-  stays) `pending`; nothing here assigns a display.
+  client is expected to be able to safely re-send it (platform/
+  app_version/`ip_address` are still refreshed on that repeat call,
+  since any of the three can legitimately change between attempts).
+  Always starts (or stays) `pending`; nothing here assigns a display.
+  The request's own address is captured as `ip_address` (preferring
+  `X-Forwarded-For`'s first hop when a reverse proxy sets one, else the
+  direct TCP peer) and refreshed on every config poll too -- not an
+  identity mechanism (that's `client_id`, persisted client-side), just
+  a hint so the admin can tell apart two pending clients that share a
+  generic name before approving one.
 - **Polling** (`GET /api/clients/{client_id}/config`): the client's
   heartbeat, default every 15s (`clientPollIntervalSeconds`, fixed
   server-wide, not yet per-client configurable). Every poll stamps
@@ -769,12 +771,48 @@ Platforms table) or the admin UI to approve/manage clients (#30):
   templating full CSS from theme tokens server-side; skipped for now as
   a nice-to-have, not something the task called for -- an admin who
   wants exact matching just authors a custom page).
+- **Admin UI** (`/admin/clients`, `ClientsPage.tsx`, #30): a pending
+  client shows its `client_id` as a pairing code, with Approve (picks a
+  display) / Reject / Delete; an approved client can be edited (rename,
+  reassign, change `offline_mode`), revoked back to pending, or
+  deleted; a rejected one can still be approved later without
+  re-registering. A separate "Offline Screens" section lists every
+  display with a "Design offline screen" editor -- Title/Message
+  fields plus a live `<iframe>` preview, rather than a raw-HTML box:
+  the frontend's `buildOfflineScreenHTML` composes the same visual
+  template as the backend's own default, with the title/message
+  round-tripped through a leading HTML comment
+  (`<!-- mullet-offline-screen title="..." message="..." -->`) so
+  reopening the editor doesn't need to parse the rendered markup back
+  apart. The Dashboard's "Active Clients" and "Displays" stat tiles,
+  wired up in the same pass, were previously hardcoded to 0 pending
+  exactly this.
+- **Browser registration** (`/register`, `RegisterPage.tsx`): drives
+  the exact same registration/polling flow from inside a plain browser
+  tab, for the (likely common, at least early on) case of using raw
+  browsers as clients rather than installing a dedicated app -- "let
+  the client build a call to register if there's a real client app,
+  and let a browser hit this page if there isn't" is the guiding split.
+  Generates its own pairing-code-style `client_id`
+  (`generateClientId`, a small alphabet skipping visually ambiguous
+  characters) on first visit and persists it in a cookie
+  (`mullet_client_id` -- not an auth cookie, just "remember which
+  pairing this browser already did"; `getCookie`/`setCookie` in
+  `web/src/shared/cookies.ts`) so a reload or reboot resumes the same
+  registration rather than pairing again, matching a real client's own
+  "no re-pairing needed" behavior. Polls `GET .../config` every 5s
+  while pending, redirecting straight to `/display/{slug}` the moment
+  it's approved; a 404 (the server has no record of this client_id --
+  a fresh DB, or the admin deleted it) drops back to the name form
+  rather than polling forever.
 
-Still planned: the dedicated client apps themselves (Go+webview for
-Raspberry Pi/Linux, Kotlin for Android/Android TV -- separate repos),
-the admin UI to approve/manage clients and configure offline screens
-(#30), HDMI-CEC screen power control, and the React display app's own
-"reconnecting" overlay for the raw-browser path.
+Still planned: the dedicated native client apps themselves (Go+webview
+for Raspberry Pi/Linux, Kotlin for Android/Android TV -- separate
+repos) and HDMI-CEC screen power control (Raspberry Pi only, so N/A to
+the browser path regardless). The React display app's own
+"reconnecting" overlay for a dropped connection (`ConnectOverlay.tsx`)
+predates this and was already built, not planned as an earlier version
+of this doc claimed.
 
 ---
 

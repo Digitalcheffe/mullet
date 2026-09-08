@@ -4,6 +4,7 @@ import './adminTheme.css';
 import './forms.css';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import AdminLayout from './layout/AdminLayout';
+import ClientsPage from './pages/ClientsPage';
 import Dashboard from './pages/Dashboard';
 import DesignerPage from './pages/DesignerPage';
 import DisplaysPage from './pages/DisplaysPage';
@@ -60,6 +61,7 @@ function AdminShell() {
         <Route path="plugins" element={<PluginsPage />} />
         <Route path="displays" element={<DisplaysPage />} />
         <Route path="displays/:displayId/screens/:screenId/design" element={<DesignerPage />} />
+        <Route path="clients" element={<ClientsPage />} />
         <Route path="themes" element={<ThemesPage />} />
         <Route path="themes/:themeId" element={<ThemeEditorPage />} />
         <Route path="settings" element={<SettingsPage />} />

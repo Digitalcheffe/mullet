@@ -15,6 +15,11 @@ type WeatherCurrent struct {
 	Sunrise          *string  `db:"sunrise"`
 	Sunset           *string  `db:"sunset"`
 	WindSpeed        *float64 `db:"wind_speed"`
+	// Alert is a current alert headline (e.g. "Severe Thunderstorm
+	// Warning"), nil when there's none or the plugin doesn't surface
+	// one -- neither built weather plugin populates this yet, see
+	// migration 012_weather_alert.sql.
+	Alert *string `db:"alert"`
 }
 
 // WeatherForecast represents a single day's forecast.

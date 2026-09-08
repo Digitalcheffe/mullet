@@ -1,0 +1,11 @@
+-- A current weather alert headline (issue #31), e.g. "Severe
+-- Thunderstorm Warning". NULL when there's no active alert, or when
+-- the configured data plugin doesn't surface one at all -- the two
+-- built weather plugins don't populate this yet (OpenWeatherMap's
+-- alerts live behind its separate One Call API, a different auth flow
+-- from the basic /weather endpoint this plugin already uses; Open-Meteo
+-- has no general-purpose alerts endpoint), so this lands as a framework
+-- capability the bottom bar renders when present, ahead of a plugin
+-- that populates it -- the same order UI plugins shipped ahead of
+-- their data sources in #28.
+ALTER TABLE shape_weather_current ADD COLUMN alert TEXT;

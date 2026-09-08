@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useApiFetch } from '../auth/useApiFetch';
 import ThemeTokenFields from '../components/ThemeTokenFields';
 import { backgroundCSS, defaultTheme, type ThemeTokens } from '../../shared/themes/tokens';
+import { themePresets } from '../../shared/themes/presets';
 import './ThemeEditorPage.css';
 
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
@@ -104,6 +105,41 @@ export default function ThemeEditorPage() {
         </button>
         <h1>{isNew ? 'New Theme' : `Edit ${name || 'Theme'}`}</h1>
       </div>
+
+      {isNew && (
+        <div className="theme-gallery">
+          <span className="kicker">Start from a preset</span>
+          <div className="theme-gallery-swatches">
+            {themePresets.map((preset) => (
+              <button
+                type="button"
+                key={preset.name}
+                className="theme-gallery-swatch"
+                style={{ background: backgroundCSS(preset.tokens.background) }}
+                onClick={() => {
+                  setTokens(preset.tokens);
+                  setName(preset.name);
+                }}
+                title={preset.name}
+              >
+                <span
+                  className="theme-gallery-swatch-card"
+                  style={{
+                    background: preset.tokens.cardBackground,
+                    border: `1px solid ${preset.tokens.cardBorder}`,
+                    color: preset.tokens.accentColor,
+                  }}
+                >
+                  Aa
+                </span>
+                <span className="theme-gallery-swatch-label" style={{ color: preset.tokens.textColor }}>
+                  {preset.name}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <form className="theme-editor-layout" onSubmit={handleSubmit}>
         <div className="theme-editor-fields">

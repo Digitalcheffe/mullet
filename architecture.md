@@ -326,7 +326,7 @@ one.
 | `calendars` | Discovered calendars, one row per `(plugin_instance_id, external_id)` — see [entity discovery](#write-path) |
 | `task_lists` | Same shape as `calendars`, for the `tasks` contract -- see [entity discovery](#write-path) |
 | `shape_events`, `shape_tasks`, `shape_weather_current`, `shape_weather_forecast`, `shape_home_devices`, `shape_packages`, `shape_infrastructure`, `shape_media_status` | One table per data shape, typed columns matching its Go struct — no JSON blobs. See `internal/db/migrations/002_shapes.sql`. |
-| `themes` | Named JSON token sets (`internal/db/migrations/004_displays.sql`). A display references one as its base theme; a card can override it via `cards.theme_override`. Seeded with one row ("Dark Glass", `is_default`) by `006_seed_default_theme.sql` |
+| `themes` | Named JSON token sets (`internal/db/migrations/004_displays.sql`). A display references one as its base theme; a card can override it via `cards.theme_override`. Seeded with the Dark Glass default (`006_seed_default_theme.sql`) plus three more bundled presets, none of them `is_default` (`013_bundled_themes.sql`, #31) -- see [Theme Cascade](#theme-cascade-built) |
 | `displays` | A physical output routed at `/display/{slug}` (unique). `theme_id` nullable FK to `themes`; `rotation_seconds` how often it rotates through its screens; `show_top_bar`/`show_bottom_bar` toggle the fixed clock/weather and now-playing/alerts bars |
 | `screens` | A page within a display (`ON DELETE CASCADE` from `displays`). Owns its own grid (`columns`, `row_height`, `gap`, all in pixels except `columns`) rather than inheriting one from its display; `position` orders rotation |
 | `cards` | A positioned UI plugin on a screen's grid (`ON DELETE CASCADE` from `screens`). `x`/`y`/`w`/`h` are grid units. `data_plugin_instance_id` (nullable, `ON DELETE SET NULL`) is which configured plugin instance it reads from — nullable because a card's UI plugin might need no data (clock) or the admin hasn't wired one up yet; `SET NULL` rather than cascade so deleting an unrelated data plugin instance doesn't silently delete a card |
@@ -343,7 +343,7 @@ below), and so is an admin UI to manage all of it, including a
 drag-and-drop Designer for cards, a live display renderer, and client
 approval/offline-screen config (`/admin/clients`, #30); see
 [Display Hierarchy](#display-hierarchy-built-end-to-end),
-[Theme Cascade](#theme-cascade-editor-built-display-side-application-planned),
+[Theme Cascade](#theme-cascade-built),
 and [Client Connection Model](#client-connection-model-built).
 
 ---
@@ -462,7 +462,7 @@ source (a dropdown of configured plugin instances, filtered to ones
 whose plugin manifest lists the shape this card type reads), a raw JSON
 config editor, and an optional theme override -- a toggle plus the
 narrow `ThemeTokenFields` set described in
-[Theme Cascade](#theme-cascade-editor-built-display-side-application-planned)
+[Theme Cascade](#theme-cascade-built)
 (#21), not raw JSON.
 
 The palette itself is **not** driven by the UI plugin registry described
@@ -622,7 +622,17 @@ every 5 minutes so a layout edit made in the admin UI eventually shows
 up without a manual reload, and renders whichever screen is currently
 active in a plain CSS Grid (`ScreenGrid.tsx`) -- the same `x`/`y`/`w`/`h`
 coordinates the Designer's `react-grid-layout` grid uses for editing,
-just laid out read-only instead of drag-and-drop. A display with more
+just laid out read-only instead of drag-and-drop. Rows use `1fr`
+sizing via an explicit `grid-template-rows` (one `fr` per row actually
+used across the screen's cards), the same way columns already used
+`1fr`, rather than the screen's stored `row_height` in raw pixels
+(issue #31) -- a fixed pixel height, tuned for whatever resolution the
+admin happened to be designing in, either overflowed past the bottom
+of the viewport (silently clipped, since `.display-app` hides overflow)
+or left dead space on a differently-shaped screen (a portrait tablet,
+an ultrawide), depending on which way the mismatch went; `1fr` rows
+scale the whole grid to fill exactly the container's actual height on
+any aspect ratio, with neither failure mode. A display with more
 than one screen rotates through them on `rotation_seconds` (a plain
 `setInterval`, index clamped rather than reset-via-effect if an admin
 edit shrinks the screen list mid-rotation).
@@ -634,16 +644,24 @@ whole display. A matched card polls its own data independently
 (`useShapeData.ts`, `GET /api/data/{shape}?plugin={instance}`, every 60s)
 and merges the card's optional `theme_override` onto the display's theme
 before rendering, the same shallow-merge shape the Designer's card
-settings panel already writes (see [Theme Cascade](#theme-cascade-editor-built-display-side-application-planned)).
+settings panel already writes (see [Theme Cascade](#theme-cascade-built)).
+`useShapeData` only calls `setState` when a poll's serialized response
+actually differs from the last one (issue #31 Pi performance tuning) --
+most polls return byte-identical rows (a clock's never change; weather
+barely does), and hosting hardware this thin shouldn't re-render every
+card on screen every 60 seconds for nothing.
 
 `TopBar.tsx` and `BottomBar.tsx` render when their respective
 `show_top_bar`/`show_bottom_bar` flags are set: the top bar is a live
 clock plus, if any `weather_current` data exists anywhere on the server,
 a compact condition/temp summary (not tied to a specific screen or
-card, so it stays visible across rotation); the bottom bar shows
-connection status and, with more than one screen, a rotation dot
-indicator. Neither bar reads a per-display "which data source" setting
-yet -- see [Divergence](#divergence-from-the-original-proposal).
+card, so it stays visible across rotation); the bottom bar shows a
+weather alert when the same `weather_current` row has one (`alert`
+column, issue #31 -- nil for both built weather plugins today, see
+migration `012_weather_alert.sql`'s comment on why), connection status,
+and, with more than one screen, a rotation dot indicator. Neither bar
+reads a per-display "which data source" setting yet -- see
+[Divergence](#divergence-from-the-original-proposal).
 
 `ConnectOverlay.tsx` covers three states from `useDisplayLayout`: a
 blocking full-screen "Connecting…" before any layout has ever loaded,
@@ -655,7 +673,7 @@ content.
 
 ---
 
-## Theme Cascade (Editor built; display-side application planned)
+## Theme Cascade (Built)
 
 The `themes` table and its admin CRUD API exist (a theme is just a name
 plus a `tokens` JSON blob and an `is_default` flag — see
@@ -674,25 +692,38 @@ panel (#20) now edits `theme_override` through the same field-editor
 component, restricted to a narrow field set (see below) instead of the
 raw JSON box it started with.
 
-What's *still* not built: anything on the display side that actually
-*reads* a display's theme and its cards' overrides to render a live
-grid -- that's #23. The Designer's own card placeholders and the theme
-editor's preview both hand-roll their own styling from the token values
-directly; neither goes through a shared "apply a theme" renderer, because
-that renderer doesn't exist yet.
+The display side reads and applies a theme too (#23): `DisplayApp.tsx`
+gets it pre-resolved as part of `GET /api/display/{slug}`'s response
+(`useDisplayLayout.ts`, falling back to `defaultTheme` for any token
+the display's own theme leaves unset) and threads it down as a plain
+prop through `ScreenGrid`/`DisplayCard`/`TopBar`/`BottomBar`, each
+turning tokens into inline styles itself (`cardStyle.ts`,
+`backgroundCSS`) the same way the Designer's placeholders and the
+editor's own preview already did. There's no shared "apply a theme"
+component all four go through, just the same token-shape convention
+applied independently in each -- `ThemeContext`/`useTheme.ts` (a
+React context originally meant to carry this) exists in the tree but
+is unused by anything; the simpler prop-threading approach above won
+out instead once the display renderer actually needed one.
 
 The token **type** all of this reads and writes is a single shared
 source: [`web/src/shared/themes/tokens.ts`](web/src/shared/themes/tokens.ts)
-defines `ThemeTokens` and a built-in `defaultTheme`, consumed via a
-`ThemeContext` (`useTheme.ts`) on the display side (still unpopulated
-from the database) and via `ThemeTokenFields.tsx` (a component shared
-between the full theme editor and the card override editor) on the
-admin side. The bundled default theme ("Dark Glass", seeded by
-migration `006_seed_default_theme.sql`) uses these exact token values,
-so there's never a fresh install with zero themes to pick from. This
-same token shape also backs a separate, static admin-UI theme system
-(`web/src/admin/adminTheme.css`) that is *not* part of this cascade --
-that one styles the admin app itself and isn't DB-configurable.
+defines `ThemeTokens` and a built-in `defaultTheme`, consumed via
+`ThemeTokenFields.tsx` (a component shared between the full theme
+editor and the card override editor) on the admin side. Four bundled
+presets (Dark Glass/Solid Dark/Glass Light/Solid Light, issue #31) use
+these exact token values -- Dark Glass is `defaultTheme` itself, seeded
+as the one `is_default` theme by migration `006_seed_default_theme.sql`
+so there's never a fresh install with zero themes to pick from; the
+other three are seeded (not default) by `013_bundled_themes.sql`, and
+all four are offered as starting points in the New Theme page's
+gallery (`web/src/shared/themes/presets.ts` -- picking one just
+pre-fills the ordinary editable form, it isn't a separate preset
+system; keep it in sync with the migration by hand, nothing enforces
+that structurally). This same token shape also backs a separate,
+static admin-UI theme system (`web/src/admin/adminTheme.css`) that is
+*not* part of this cascade -- that one styles the admin app itself and
+isn't DB-configurable.
 
 Cascade, once something renders it: a **Display** sets a base theme (FK
 to `themes`); its **Screens'** cards inherit it by default; a **Card**
@@ -846,7 +877,12 @@ of this doc claimed.
   `react-grid-layout`, used specifically for the Designer's drag/resize/
   collision-detection grid mechanics (`DesignerPage.tsx`) — reimplementing
   that correctly by hand wasn't worth the risk for what a mature,
-  purpose-built library already does well.
+  purpose-built library already does well. Kept out of a kiosk's own
+  download via route-level code-splitting (issue #31 Pi performance
+  tuning): `main.tsx` lazy-loads all three top-level apps
+  (`AdminApp`/`DisplayApp`/`RegisterPage`), so `/display` and `/register`
+  never fetch, parse, or evaluate the admin bundle `react-grid-layout`
+  lives in.
 - **Storage**: SQLite, one file, schema-migrated on startup
   (`internal/db/migrations`, applied in order, tracked so each runs
   once).
@@ -951,9 +987,12 @@ noted here so that doc's specifics aren't taken as current fact.
   `weather_current` row the API returns first rather than a per-display
   "which data source" setting the proposal's Grid System diagram didn't
   specify either way -- fine with one weather instance configured,
-  ambiguous with more than one. **The bottom bar's "alerts"** half was
-  dropped entirely: no shape carries alert-style events yet, so it
-  currently shows connection status only. See
+  ambiguous with more than one. **The bottom bar's "alerts"** half
+  (#31) now has a real `alert` column and renders it when present, but
+  neither built weather plugin populates it -- OpenWeatherMap's alerts
+  live behind its separate One Call API (a different auth flow from the
+  basic `/weather` endpoint the plugin already uses), and Open-Meteo has
+  no general-purpose alerts endpoint at all. See
   [The Display Renderer](#the-display-renderer).
 - **The theme editor's live preview** (#21) is a standalone page with
   its own generic 3-card mockup, not the proposal's description of a

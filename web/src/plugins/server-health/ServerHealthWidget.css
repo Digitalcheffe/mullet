@@ -1,0 +1,116 @@
+.server-health-widget {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sh-empty {
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+}
+
+.sh-service {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sh-service-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9em;
+}
+
+.sh-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.sh-good {
+  background: #2ecc71;
+}
+
+.sh-warn {
+  background: #f1c40f;
+}
+
+.sh-bad {
+  background: #e74c3c;
+}
+
+.sh-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.sh-status {
+  flex-shrink: 0;
+  font-size: 0.8em;
+  opacity: 0.6;
+  text-transform: capitalize;
+}
+
+.sh-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 17px;
+}
+
+.sh-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75em;
+  opacity: 0.85;
+}
+
+.sh-bar-label {
+  flex-shrink: 0;
+  width: 2.2em;
+  opacity: 0.6;
+}
+
+.sh-bar-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.sh-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.sh-bar-good {
+  background: #2ecc71;
+}
+
+.sh-bar-warn {
+  background: #f1c40f;
+}
+
+.sh-bar-bad {
+  background: #e74c3c;
+}
+
+.sh-bar-value {
+  flex-shrink: 0;
+  width: 2.4em;
+  text-align: right;
+}

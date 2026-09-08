@@ -48,8 +48,11 @@ interface PaletteItem {
   // The data shape this widget reads, or null if it needs no data
   // source (e.g. clock reads the browser's own time). No server-side UI
   // plugin registry exists yet (see architecture.md), so this palette
-  // is a hand-maintained list of the widgets a card *could* be, scoped
-  // to shapes a compiled-in data plugin can actually produce today.
+  // is a hand-maintained list of every built UI plugin -- some (e.g.
+  // Home Status) already have a compiled data plugin to feed them
+  // (home-assistant); others (Server Health, Media Now Playing,
+  // Package Tracker) exist ahead of theirs, so a card of that type just
+  // reads no rows until a matching data plugin ships.
   dataShape: string | null;
 }
 
@@ -60,6 +63,10 @@ const PALETTE: PaletteItem[] = [
   { uiPluginId: 'mullet-calendar-agenda', label: 'Calendar Agenda', dataShape: 'events' },
   { uiPluginId: 'mullet-task-list', label: 'Task List', dataShape: 'tasks' },
   { uiPluginId: 'mullet-meal-plan', label: 'Meal Plan', dataShape: 'events' },
+  { uiPluginId: 'mullet-home-status', label: 'Home Status', dataShape: 'home_devices' },
+  { uiPluginId: 'mullet-server-health', label: 'Server Health', dataShape: 'infrastructure' },
+  { uiPluginId: 'mullet-media-now-playing', label: 'Media (Now Playing)', dataShape: 'media_status' },
+  { uiPluginId: 'mullet-package-tracker', label: 'Package Tracker', dataShape: 'packages' },
 ];
 
 const DEFAULT_CARD_SIZE = { w: 4, h: 3 };

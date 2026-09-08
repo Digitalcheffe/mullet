@@ -1,0 +1,84 @@
+.home-status-widget {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hs-empty {
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+}
+
+.hs-group-header {
+  font-size: 0.8em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+
+.hs-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hs-device {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 0.9em;
+}
+
+.hs-icon {
+  flex-shrink: 0;
+  font-size: 1.1em;
+  line-height: 1;
+}
+
+.hs-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hs-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.hs-good {
+  background: #2ecc71;
+}
+
+.hs-warn {
+  background: #f1c40f;
+}
+
+.hs-bad {
+  background: #e74c3c;
+}
+
+.hs-neutral {
+  background: currentColor;
+  opacity: 0.35;
+}
+
+.hs-state {
+  flex-shrink: 0;
+  font-size: 0.8em;
+  opacity: 0.6;
+  text-transform: capitalize;
+}

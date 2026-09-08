@@ -1,0 +1,80 @@
+.media-now-playing-widget {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.mnp-empty {
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+}
+
+.mnp-art {
+  flex-shrink: 0;
+  width: 3.2em;
+  height: 3.2em;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.mnp-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mnp-art-placeholder {
+  font-size: 1.4em;
+  opacity: 0.6;
+}
+
+.mnp-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mnp-title {
+  font-weight: 700;
+  font-size: 1.05em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mnp-artist {
+  font-size: 0.85em;
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mnp-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75em;
+  margin-top: 2px;
+}
+
+.mnp-compact .mnp-title {
+  font-size: 0.95em;
+}
+
+.mnp-compact .mnp-artist,
+.mnp-compact .mnp-meta {
+  display: none;
+}

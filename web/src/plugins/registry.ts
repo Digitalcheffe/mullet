@@ -12,6 +12,10 @@ import { calendarAgendaPlugin } from './calendar-agenda/CalendarAgendaWidget';
 import { taskListPlugin } from './task-list/TaskListWidget';
 import { mealPlanPlugin } from './meal-plan/MealPlanWidget';
 import { clockPlugin } from './clock/ClockWidget';
+import { homeStatusPlugin } from './home-status/HomeStatusWidget';
+import { serverHealthPlugin } from './server-health/ServerHealthWidget';
+import { mediaNowPlayingPlugin } from './media-now-playing/MediaNowPlayingWidget';
+import { packageTrackerPlugin } from './package-tracker/PackageTrackerWidget';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const uiPlugins: UIPlugin<any>[] = [
@@ -21,6 +25,10 @@ export const uiPlugins: UIPlugin<any>[] = [
   taskListPlugin,
   mealPlanPlugin,
   clockPlugin,
+  homeStatusPlugin,
+  serverHealthPlugin,
+  mediaNowPlayingPlugin,
+  packageTrackerPlugin,
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

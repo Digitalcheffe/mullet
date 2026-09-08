@@ -32,9 +32,10 @@ subscriptions, no vendor lock-in, no cloud dependency.
   plugins on a schedule, writes to SQLite, serves a REST API, and hosts
   the React frontend (admin UI + display views).
 - **Client** (endpoint device): a browser pointed at the server, in
-  kiosk mode or otherwise. A dedicated client app is planned (see
-  [Client Connection Model](#client-connection-model-planned)) but not
-  built yet — today, every display is a plain browser tab.
+  kiosk mode or otherwise. A dedicated client app's server-side API is
+  built (see [Client Connection Model](#client-connection-model-built)),
+  but the client app itself isn't — today, every display is a plain
+  browser tab.
 
 The server does all the work; the client just renders. One server, many
 displays, each with its own URL (`/display/{slug}`).
@@ -330,6 +331,8 @@ one.
 | `screens` | A page within a display (`ON DELETE CASCADE` from `displays`). Owns its own grid (`columns`, `row_height`, `gap`, all in pixels except `columns`) rather than inheriting one from its display; `position` orders rotation |
 | `cards` | A positioned UI plugin on a screen's grid (`ON DELETE CASCADE` from `screens`). `x`/`y`/`w`/`h` are grid units. `data_plugin_instance_id` (nullable, `ON DELETE SET NULL`) is which configured plugin instance it reads from — nullable because a card's UI plugin might need no data (clock) or the admin hasn't wired one up yet; `SET NULL` rather than cascade so deleting an unrelated data plugin instance doesn't silently delete a card |
 | `oauth_tokens` | One row per OAuth2 plugin instance's access/refresh token (`internal/db/migrations/008_oauth_tokens.sql`, `ON DELETE CASCADE` from `data_plugin_instances`, `UNIQUE` on `plugin_instance_id`) — see [OAuth2](#oauth2-built) below |
+| `clients` | Registered dedicated-client-app devices (`internal/db/migrations/010_clients.sql`, #29). `client_id` is generated *by the client itself* (a pairing code) and sent at registration, `UNIQUE` -- registering the same `client_id` twice is idempotent, not an error, since a client can't tell whether its first registration actually landed. `display_id` nullable FK to `displays` (no `ON DELETE CASCADE`: deleting a display a client is assigned to is blocked, same as `theme_id`, until the client is reassigned or removed). `status` is only ever the admin's own lifecycle call (`pending`/`approved`/`rejected`) -- see [Client Connection Model](#client-connection-model-built) for why "offline" isn't a stored status |
+| `displays.offline_screen_html` | Nullable column added alongside `clients` (same migration): an admin-authored, self-contained offline-screen page for one display. `NULL` means "use the generated default" -- see [Client Connection Model](#client-connection-model-built) |
 
 Every shape table carries `plugin_instance_id` (`ON DELETE CASCADE` from
 `data_plugin_instances`) and `fetched_at`. `shape_events`/`shape_tasks`
@@ -340,15 +343,9 @@ below), and so is an admin UI to manage all of it, including a
 drag-and-drop Designer for cards and a live display renderer; see
 [Display Hierarchy](#display-hierarchy-built-end-to-end)
 and [Theme Cascade](#theme-cascade-editor-built-display-side-application-planned).
-
-### Planned
-
-Full column lists for what's not built are in
-[`docs/architecture_1.md` § SQLite Schema](docs/architecture_1.md#sqlite-schema).
-
-| Table | Purpose | Lands with |
-|---|---|---|
-| `clients` | Registered dedicated-client-app devices | #29 |
+The one exception is `clients`/`offline_screen_html`: their API is built
+(#29, below), but the admin UI for approving/managing clients lands
+separately with #30.
 
 ---
 
@@ -385,6 +382,13 @@ All routes below are wired in `internal/api/router.go`.
 | `PUT`/`DELETE /api/admin/cards/{id}` | JWT | Update / remove a card |
 | `GET /api/data/{shape}` | none (LAN-facing, like the display itself) | Typed rows for a data shape, optionally filtered |
 | `GET /api/display/{slug}` | none (LAN-facing, like the display itself) | A display's own fields, resolved theme tokens, and every screen with its cards, in one call -- see [Display Hierarchy](#display-hierarchy-built-end-to-end) |
+| `POST /api/clients/register` | none (clients are admin-approved, not authenticated) | Register a client-generated `client_id` + name; idempotent, always starts/stays `pending` -- see [Client Connection Model](#client-connection-model-built) |
+| `GET /api/clients/{client_id}/config` | none | A client's polling heartbeat: stamps `last_seen_at`, returns its status and (once approved) assigned display's slug |
+| `GET /api/clients/{client_id}/offline` | none | The self-contained offline-screen HTML a client caches and shows when it can't reach the server |
+| `GET /api/admin/clients` | JWT | List every registered client, each with a computed `online` (from `last_seen_at` recency) |
+| `PUT /api/admin/clients/{id}/approve` | JWT | Approve a client and assign it to a display in one step (body: `{display_id}`) |
+| `PUT`/`DELETE /api/admin/clients/{id}` | JWT | Update (rename, reassign, reject, change offline mode) / remove a client's registration entirely |
+| `GET`/`PUT /api/admin/displays/{id}/offline-screen` | JWT | Get / set a display's custom offline-screen HTML (`{html: null}` clears back to the generated default) |
 
 `requireAuth` (`internal/api/middleware.go`) guards every `/api/admin/*`
 route except setup/login behind a `Bearer <jwt>` header — unless
@@ -399,12 +403,8 @@ via react-router). `/display/{slug}` renders the real grid engine now
 
 ### Planned
 
-`/api/clients/*` is mounted (`router.go`) but has no handlers — it's a
-placeholder for #29. Routes for displays/screens/cards/themes and a
-richer client API are proposed in
-[`docs/architecture_1.md` § API Endpoints](docs/architecture_1.md#api-endpoints);
-expect the exact paths to differ from that proposal the way the built
-routes above already do (see [Divergence](#divergence-from-the-original-proposal)).
+The admin UI consuming the `/api/admin/clients` and
+`/api/admin/displays/{id}/offline-screen` routes above lands with #30.
 
 ---
 
@@ -714,37 +714,67 @@ full `tokens`.
 
 ---
 
-## Client Connection Model (Planned)
+## Client Connection Model (Built)
 
-*Lands with #29. Full detail, including the registration pairing flow,
+*Server-side API only (#29) -- the dedicated client apps themselves and
+the admin UI to manage clients (#30) are still planned, called out
+below. Full detail, including the registration pairing flow,
 offline-mode design, and per-platform kiosk setup, is in
 [`docs/architecture_1.md` § Client`](docs/architecture_1.md#client) —
 summarized here.*
 
-Today, a display is just `GET /display/{slug}` in a plain browser: no
-registration, no offline fallback beyond whatever the browser itself
-shows when the server is unreachable.
+A display is still reachable as plain `GET /display/{slug}` in a
+browser today, with no registration and no offline fallback beyond
+whatever the browser itself shows when the server is unreachable --
+that path stays supported indefinitely for devices where installing a
+client isn't practical. #29 built the server-side half of a second,
+recommended path -- a lightweight dedicated client app -- without the
+client app itself (a separate repo, per `docs/architecture_1.md`'s
+Platforms table) or the admin UI to approve/manage clients (#30):
 
-The planned design adds a second, recommended path — a lightweight
-dedicated client app (separate repo; Go+webview on Raspberry Pi/Linux,
-Kotlin on Android/Android TV) that:
-- registers with the server via a short-lived pairing code, approved
-  once in the admin UI;
-- polls for its display assignment (default 15s) rather than holding a
-  persistent connection;
-- on server unreachable, falls back to a pre-rendered, server-supplied
-  offline screen cached locally (not a frozen copy of the live
-  dashboard) — configurable to instead power off the screen via
-  HDMI-CEC (Raspberry Pi only) or freeze on the last frame;
-- on Raspberry Pi with HDMI-CEC, can also drive a screen-on/off schedule
-  independent of connectivity.
+- **Registration** (`POST /api/clients/register`): the client
+  generates its own `client_id` locally (a short pairing code it shows
+  on screen) and registers it along with a name/platform/version.
+  Idempotent on `client_id` -- registering twice returns the existing
+  record rather than erroring, since a client that loses its first
+  response can't tell whether registration actually landed, and a
+  client is expected to be able to safely re-send it. Always starts (or
+  stays) `pending`; nothing here assigns a display.
+- **Polling** (`GET /api/clients/{client_id}/config`): the client's
+  heartbeat, default every 15s (`clientPollIntervalSeconds`, fixed
+  server-wide, not yet per-client configurable). Every poll stamps
+  `last_seen_at` -- the *only* signal the server has for online/offline,
+  since a client that's actually offline has no way to tell the server
+  so. That's why `clients.status` only ever holds the admin's own
+  lifecycle decision (`pending`/`approved`/`rejected`); the admin
+  listing's `online` field is computed instead, from how recently
+  `last_seen_at` was touched (`clientOnlineThreshold`, 4x the poll
+  interval, wide enough to not flap on an ordinary slow poll).
+- **Approval** (`PUT /api/admin/clients/{id}/approve`, JWT): sets
+  `status = "approved"` and assigns a display in one call -- the two
+  are inseparable, since an approved client with no display has
+  nothing to render. `PUT /api/admin/clients/{id}` handles everything
+  else editable (rename, reassign, reject, change `offline_mode`); a
+  client is deleted outright, not soft-rejected, once the admin doesn't
+  want it around at all.
+- **Offline mode** (`GET /api/clients/{client_id}/offline`): returns a
+  self-contained HTML page (inline styles, no external requests) the
+  client is expected to cache locally and show when a poll fails. An
+  admin can author a custom one per display
+  (`PUT /api/admin/displays/{id}/offline-screen`, stored in
+  `displays.offline_screen_html`); with none set, the server generates
+  a default (`defaultOfflineScreenHTML`) -- a live clock plus the
+  display's name, styled as a generic dark kiosk screen rather than
+  matching that display's actual theme (theme-matching would mean
+  templating full CSS from theme tokens server-side; skipped for now as
+  a nice-to-have, not something the task called for -- an admin who
+  wants exact matching just authors a custom page).
 
-The raw-browser path (what exists today) stays supported indefinitely
-for devices where installing a client isn't practical — it just won't
-get registration, offline fallback, or screen power management. The
-React display app is expected to grow its own lightweight resilience
-(a "reconnecting" overlay over the last good frame on a failed poll)
-independent of whether the dedicated client ships.
+Still planned: the dedicated client apps themselves (Go+webview for
+Raspberry Pi/Linux, Kotlin for Android/Android TV -- separate repos),
+the admin UI to approve/manage clients and configure offline screens
+(#30), HDMI-CEC screen power control, and the React display app's own
+"reconnecting" overlay for the raw-browser path.
 
 ---
 

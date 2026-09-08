@@ -14,7 +14,8 @@ import (
 const currentJSON = `{
 	"weather": [{"main": "Clouds", "description": "few clouds", "icon": "02d"}],
 	"main": {"temp": 21.5, "feels_like": 21.0, "temp_min": 20.0, "temp_max": 23.0, "humidity": 60},
-	"sys": {"sunrise": 1700000000, "sunset": 1700040000}
+	"sys": {"sunrise": 1700000000, "sunset": 1700040000},
+	"wind": {"speed": 4.12, "deg": 200}
 }`
 
 // Two entries on day 1 (one near noon, one late) and one on day 2, so the
@@ -78,6 +79,9 @@ func TestFetchSuccess(t *testing.T) {
 	}
 	if current.Sunrise == nil || current.Sunset == nil {
 		t.Error("current.Sunrise/Sunset not set")
+	}
+	if current.WindSpeed == nil || *current.WindSpeed != 4.12 {
+		t.Errorf("current.WindSpeed = %v, want 4.12", current.WindSpeed)
 	}
 
 	forecastRows, ok := result[shapeForecast]

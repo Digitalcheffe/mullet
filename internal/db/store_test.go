@@ -40,7 +40,8 @@ func TestWriteShapeWeatherCurrentReplaces(t *testing.T) {
 	sqldb := newTestDB(t)
 
 	humidity := 55
-	first := []any{shapes.WeatherCurrent{ID: "current", Temp: 70.5, Condition: "Sunny", Icon: "sun", Humidity: &humidity}}
+	windSpeed := 12.5
+	first := []any{shapes.WeatherCurrent{ID: "current", Temp: 70.5, Condition: "Sunny", Icon: "sun", Humidity: &humidity, WindSpeed: &windSpeed}}
 	if err := WriteShape(sqldb, "weather_current", 1, first); err != nil {
 		t.Fatalf("WriteShape (first): %v", err)
 	}
@@ -51,6 +52,14 @@ func TestWriteShapeWeatherCurrentReplaces(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("after first write: %d rows, want 1", count)
+	}
+
+	var gotWindSpeed float64
+	if err := sqldb.QueryRow(`SELECT wind_speed FROM shape_weather_current WHERE plugin_instance_id = 1`).Scan(&gotWindSpeed); err != nil {
+		t.Fatalf("reading wind_speed: %v", err)
+	}
+	if gotWindSpeed != 12.5 {
+		t.Errorf("wind_speed = %v, want 12.5", gotWindSpeed)
 	}
 
 	second := []any{shapes.WeatherCurrent{ID: "current", Temp: 68.0, Condition: "Cloudy", Icon: "cloud"}}

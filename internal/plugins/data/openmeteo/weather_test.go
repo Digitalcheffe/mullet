@@ -12,7 +12,7 @@ import (
 )
 
 const forecastJSON = `{
-	"current": {"temperature_2m": 17.3, "apparent_temperature": 18.0, "relative_humidity_2m": 83, "weather_code": 0},
+	"current": {"temperature_2m": 17.3, "apparent_temperature": 18.0, "relative_humidity_2m": 83, "weather_code": 0, "wind_speed_10m": 9.4},
 	"daily": {
 		"time": ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11", "2026-09-12"],
 		"temperature_2m_max": [18.9, 22.2, 24.8, 20.0, 19.0, 21.0],
@@ -68,6 +68,9 @@ func TestFetchSuccessWithCityName(t *testing.T) {
 	}
 	if current.Sunrise == nil || *current.Sunrise != "06:36" {
 		t.Errorf("current.Sunrise = %v, want 06:36", current.Sunrise)
+	}
+	if current.WindSpeed == nil || *current.WindSpeed != 9.4 {
+		t.Errorf("current.WindSpeed = %v, want 9.4", current.WindSpeed)
 	}
 
 	forecastRows := result[shapeForecast]

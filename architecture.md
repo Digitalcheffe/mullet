@@ -329,8 +329,9 @@ Display   "Kitchen"  --  /display/kitchen
   JSON `config`, an optional data source (`data_plugin_instance_id`,
   nullable, `ON DELETE SET NULL`), and an optional `theme_override`.
 - **UI plugin**: the React component rendered inside a card, reading one
-  data shape. None exist yet — the clock/weather/calendar-agenda widgets
-  implied by the plugins above are all still to be built.
+  data shape. Two exist (`weather-current`, `weather-forecast` — see
+  [UI Plugins](#ui-plugins-two-built-no-consumer-yet) below); the rest
+  implied by the plugins above are still to be built.
 
 ### The Designer
 
@@ -349,13 +350,57 @@ narrow `ThemeTokenFields` set described in
 [Theme Cascade](#theme-cascade-editor-built-display-side-application-planned)
 (#21), not raw JSON.
 
-The palette itself is **not** driven by a server-side UI plugin
-registry — none exists (see the UI plugin bullet above) — it's a small
-hardcoded list in `DesignerPage.tsx` scoped to shapes a compiled-in data
-plugin can actually produce today (`clock`, `weather-current`,
-`weather-forecast`, `calendar-agenda`). A placed card renders as a
-generic labeled box (widget name + data source), not real widget
-content, until issue #23 builds actual UI plugin components.
+The palette itself is **not** driven by the UI plugin registry described
+below — it's a small hardcoded list in `DesignerPage.tsx` scoped to
+shapes a compiled-in data plugin can actually produce today (`clock`,
+`weather-current`, `weather-forecast`, `calendar-agenda`). A placed card
+still renders as a generic labeled box (widget name + data source), not
+real widget content, even for the two UI plugins that now exist --
+wiring the Designer (or a live display) up to actually render them is
+issue #23's job, not this one's.
+
+### UI Plugins (Two built, no consumer yet)
+
+`web/src/plugins/` holds real UI plugin implementations, each in its own
+folder per `UIPlugin` (`web/src/shared/types/plugin.ts`): an `id`,
+`dataShape`, `defaultSize`/`minSize`/`maxSize` (grid units), an optional
+`configSchema`, and a `component` receiving `WidgetProps<TData>` --
+`data` (the shape's rows, exactly as `GET /api/data/{shape}` returns
+them -- nothing fetches on the widget's behalf), `config`, `size`
+(current grid units, the one hint a widget gets about its own room --
+there's no ResizeObserver or pixel measurement), and `theme`. Two exist:
+
+- **`weather-current`**: temp, condition glyph, high/low, humidity, wind
+  speed. Drops the secondary stats when `size` is small (`≤2` grid
+  rows or `≤3` columns) rather than overflowing.
+- **`weather-forecast`**: one column per forecast day (glyph, high/low,
+  precip chance), the day count itself capped by both a `days` config
+  option and by `size.w` (a narrow card shows 2 days, not all 5,
+  squeezed into columns).
+
+Both render their **own** full card chrome from `theme` (background,
+border, radius, blur, opacity, font) -- there's no separate wrapping
+`Card` component in this design, matching how the Designer's own
+placeholder cards already work. Both key their icon off the shape row's
+`condition` string (`"Clear"`, `"Rain"`, ...), not its `icon` field: the
+two weather data plugins don't share an icon vocabulary (openweathermap
+passes through OWM's own codes like `"02d"`; open-meteo emits plain
+keywords like `"clouds"`) but both normalize `condition` to the same
+small set of category words, so that's the one field a UI plugin can
+actually trust regardless of which data plugin produced the row (see
+`web/src/plugins/shared/conditionIcons.ts`).
+
+`web/src/plugins/registry.ts` lists every built UI plugin (mirrors
+`internal/plugins/data/registry.go`'s pattern on the Go side), for
+whatever eventually looks up "which component renders `ui_plugin_id`
+X" -- nothing does yet. Until #23 builds that consumer, these two
+components are verified only by direct testing against the real API,
+not by anything in the running app.
+
+`shapes.WeatherCurrent` gained a `wind_speed` column (migration
+`007_weather_wind_speed.sql`) to back the wind reading -- it didn't
+exist before `weather-current` needed to display it. Both weather data
+plugins (openweathermap, open-meteo) were updated to populate it.
 
 ---
 

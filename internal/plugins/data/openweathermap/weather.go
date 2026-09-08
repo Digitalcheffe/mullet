@@ -245,6 +245,9 @@ type currentResponse struct {
 		Sunrise int64 `json:"sunrise"`
 		Sunset  int64 `json:"sunset"`
 	} `json:"sys"`
+	Wind struct {
+		Speed float64 `json:"speed"`
+	} `json:"wind"`
 }
 
 func (r currentResponse) toShape() shapes.WeatherCurrent {
@@ -258,6 +261,7 @@ func (r currentResponse) toShape() shapes.WeatherCurrent {
 	humidity := r.Main.Humidity
 	high := r.Main.TempMax
 	low := r.Main.TempMin
+	windSpeed := r.Wind.Speed
 
 	current := shapes.WeatherCurrent{
 		ID:        "current",
@@ -268,6 +272,7 @@ func (r currentResponse) toShape() shapes.WeatherCurrent {
 		Humidity:  &humidity,
 		High:      &high,
 		Low:       &low,
+		WindSpeed: &windSpeed,
 	}
 
 	if r.Sys.Sunrise > 0 {

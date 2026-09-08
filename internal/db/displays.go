@@ -130,17 +130,22 @@ type Display struct {
 	Slug            string
 	ThemeID         *int
 	RotationSeconds int
+	ShowTopBar      bool
+	ShowBottomBar   bool
 }
 
 func scanDisplay(row interface{ Scan(...any) error }) (Display, error) {
 	var d Display
-	if err := row.Scan(&d.ID, &d.Name, &d.Slug, &d.ThemeID, &d.RotationSeconds); err != nil {
+	var showTopBar, showBottomBar int
+	if err := row.Scan(&d.ID, &d.Name, &d.Slug, &d.ThemeID, &d.RotationSeconds, &showTopBar, &showBottomBar); err != nil {
 		return Display{}, err
 	}
+	d.ShowTopBar = showTopBar != 0
+	d.ShowBottomBar = showBottomBar != 0
 	return d, nil
 }
 
-const displayColumns = `id, name, slug, theme_id, rotation_seconds`
+const displayColumns = `id, name, slug, theme_id, rotation_seconds, show_top_bar, show_bottom_bar`
 
 // ListDisplays returns every display, oldest first.
 func ListDisplays(sqldb *sql.DB) ([]Display, error) {
@@ -177,10 +182,10 @@ func GetDisplay(sqldb *sql.DB, id int) (Display, error) {
 // CreateDisplay inserts a new display and returns its ID. Returns
 // ErrInUse if slug is already taken, or if themeID is set but doesn't
 // exist.
-func CreateDisplay(sqldb *sql.DB, name, slug string, themeID *int, rotationSeconds int) (int, error) {
+func CreateDisplay(sqldb *sql.DB, name, slug string, themeID *int, rotationSeconds int, showTopBar, showBottomBar bool) (int, error) {
 	result, err := sqldb.Exec(
-		`INSERT INTO displays (name, slug, theme_id, rotation_seconds) VALUES (?, ?, ?, ?)`,
-		name, slug, themeID, rotationSeconds,
+		`INSERT INTO displays (name, slug, theme_id, rotation_seconds, show_top_bar, show_bottom_bar) VALUES (?, ?, ?, ?, ?, ?)`,
+		name, slug, themeID, rotationSeconds, boolToInt(showTopBar), boolToInt(showBottomBar),
 	)
 	if err != nil {
 		if isForeignKeyViolation(err) {
@@ -197,10 +202,10 @@ func CreateDisplay(sqldb *sql.DB, name, slug string, themeID *int, rotationSecon
 
 // UpdateDisplay overwrites an existing display's editable fields.
 // Returns ErrNotFound if id doesn't exist.
-func UpdateDisplay(sqldb *sql.DB, id int, name, slug string, themeID *int, rotationSeconds int) error {
+func UpdateDisplay(sqldb *sql.DB, id int, name, slug string, themeID *int, rotationSeconds int, showTopBar, showBottomBar bool) error {
 	result, err := sqldb.Exec(
-		`UPDATE displays SET name = ?, slug = ?, theme_id = ?, rotation_seconds = ? WHERE id = ?`,
-		name, slug, themeID, rotationSeconds, id,
+		`UPDATE displays SET name = ?, slug = ?, theme_id = ?, rotation_seconds = ?, show_top_bar = ?, show_bottom_bar = ? WHERE id = ?`,
+		name, slug, themeID, rotationSeconds, boolToInt(showTopBar), boolToInt(showBottomBar), id,
 	)
 	if err != nil {
 		if isForeignKeyViolation(err) {

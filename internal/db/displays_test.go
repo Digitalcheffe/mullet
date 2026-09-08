@@ -56,7 +56,7 @@ func TestDeleteThemeInUseReturnsErrInUse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTheme: %v", err)
 	}
-	if _, err := CreateDisplay(sqldb, "Kitchen", "kitchen", &themeID, 30); err != nil {
+	if _, err := CreateDisplay(sqldb, "Kitchen", "kitchen", &themeID, 30, true, true); err != nil {
 		t.Fatalf("CreateDisplay: %v", err)
 	}
 
@@ -68,7 +68,7 @@ func TestDeleteThemeInUseReturnsErrInUse(t *testing.T) {
 func TestDisplayCRUD(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	id, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30)
+	id, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30, true, true)
 	if err != nil {
 		t.Fatalf("CreateDisplay: %v", err)
 	}
@@ -80,6 +80,9 @@ func TestDisplayCRUD(t *testing.T) {
 	if got.Name != "Kitchen" || got.Slug != "kitchen" || got.RotationSeconds != 30 || got.ThemeID != nil {
 		t.Errorf("GetDisplay = %+v, unexpected values", got)
 	}
+	if !got.ShowTopBar || !got.ShowBottomBar {
+		t.Errorf("GetDisplay bars = (%v, %v), want (true, true)", got.ShowTopBar, got.ShowBottomBar)
+	}
 
 	displays, err := ListDisplays(sqldb)
 	if err != nil {
@@ -89,12 +92,15 @@ func TestDisplayCRUD(t *testing.T) {
 		t.Fatalf("displays = %+v, want 1 entry", displays)
 	}
 
-	if err := UpdateDisplay(sqldb, id, "Office", "office", nil, 60); err != nil {
+	if err := UpdateDisplay(sqldb, id, "Office", "office", nil, 60, false, false); err != nil {
 		t.Fatalf("UpdateDisplay: %v", err)
 	}
 	got, _ = GetDisplay(sqldb, id)
 	if got.Name != "Office" || got.Slug != "office" || got.RotationSeconds != 60 {
 		t.Errorf("after update: GetDisplay = %+v, unexpected values", got)
+	}
+	if got.ShowTopBar || got.ShowBottomBar {
+		t.Errorf("after update: bars = (%v, %v), want (false, false)", got.ShowTopBar, got.ShowBottomBar)
 	}
 
 	if err := DeleteDisplay(sqldb, id); err != nil {
@@ -108,10 +114,10 @@ func TestDisplayCRUD(t *testing.T) {
 func TestCreateDisplayDuplicateSlugFails(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	if _, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30); err != nil {
+	if _, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30, true, true); err != nil {
 		t.Fatalf("CreateDisplay (first): %v", err)
 	}
-	if _, err := CreateDisplay(sqldb, "Kitchen 2", "kitchen", nil, 30); err == nil {
+	if _, err := CreateDisplay(sqldb, "Kitchen 2", "kitchen", nil, 30, true, true); err == nil {
 		t.Error("CreateDisplay with duplicate slug: expected error, got nil")
 	}
 }
@@ -120,7 +126,7 @@ func TestCreateDisplayUnknownThemeReturnsErrInUse(t *testing.T) {
 	sqldb := newTestDB(t)
 
 	missing := 9999
-	if _, err := CreateDisplay(sqldb, "Kitchen", "kitchen", &missing, 30); !errors.Is(err, ErrInUse) {
+	if _, err := CreateDisplay(sqldb, "Kitchen", "kitchen", &missing, 30, true, true); !errors.Is(err, ErrInUse) {
 		t.Errorf("CreateDisplay(unknown theme) = %v, want ErrInUse", err)
 	}
 }
@@ -128,7 +134,7 @@ func TestCreateDisplayUnknownThemeReturnsErrInUse(t *testing.T) {
 func TestUpdateDeleteMissingDisplayReturnsErrNotFound(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	if err := UpdateDisplay(sqldb, 9999, "X", "x", nil, 30); !errors.Is(err, ErrNotFound) {
+	if err := UpdateDisplay(sqldb, 9999, "X", "x", nil, 30, true, true); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateDisplay(missing) = %v, want ErrNotFound", err)
 	}
 	if err := DeleteDisplay(sqldb, 9999); !errors.Is(err, ErrNotFound) {
@@ -139,7 +145,7 @@ func TestUpdateDeleteMissingDisplayReturnsErrNotFound(t *testing.T) {
 func TestScreenCRUD(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	displayID, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30)
+	displayID, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30, true, true)
 	if err != nil {
 		t.Fatalf("CreateDisplay: %v", err)
 	}
@@ -203,7 +209,7 @@ func TestUpdateDeleteMissingScreenReturnsErrNotFound(t *testing.T) {
 func TestDeletingDisplayCascadesToScreensAndCards(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	displayID, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30)
+	displayID, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30, true, true)
 	if err != nil {
 		t.Fatalf("CreateDisplay: %v", err)
 	}
@@ -231,7 +237,7 @@ func TestDeletingDisplayCascadesToScreensAndCards(t *testing.T) {
 func TestCardCRUD(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	displayID, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30)
+	displayID, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30, true, true)
 	if err != nil {
 		t.Fatalf("CreateDisplay: %v", err)
 	}
@@ -305,7 +311,7 @@ func TestCreateCardUnknownScreenReturnsErrInUse(t *testing.T) {
 func TestCreateCardUnknownDataPluginInstanceReturnsErrInUse(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	displayID, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30)
+	displayID, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30, true, true)
 	if err != nil {
 		t.Fatalf("CreateDisplay: %v", err)
 	}
@@ -334,7 +340,7 @@ func TestUpdateDeleteMissingCardReturnsErrNotFound(t *testing.T) {
 func TestDeletingDataPluginInstanceNullsCardReference(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	displayID, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30)
+	displayID, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30, true, true)
 	if err != nil {
 		t.Fatalf("CreateDisplay: %v", err)
 	}

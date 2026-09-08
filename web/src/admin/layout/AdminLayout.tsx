@@ -20,7 +20,6 @@ interface SoonItem {
 // exist yet -- rendered disabled with a "Soon" badge rather than either
 // a dead link or being hidden entirely.
 const soonItems: SoonItem[] = [
-  { label: 'Displays', icon: DisplaysIcon },
   { label: 'Themes', icon: ThemesIcon },
   { label: 'Clients', icon: ClientsIcon },
 ];
@@ -42,6 +41,11 @@ export default function AdminLayout({ username, onSignOut }: AdminLayoutProps) {
         <NavLink to="/admin/plugins" className={navLinkClassName}>
           <PluginsIcon />
           Data Plugins
+        </NavLink>
+
+        <NavLink to="/admin/displays" className={navLinkClassName}>
+          <DisplaysIcon />
+          Displays
         </NavLink>
 
         {soonItems.map(({ label, icon: Icon }) => (

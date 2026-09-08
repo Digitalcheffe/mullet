@@ -100,7 +100,7 @@ func TestDeleteThemeInUseReturns409(t *testing.T) {
 func TestDisplayCRUDEndpoints(t *testing.T) {
 	router, _ := newTestRouter(t, nil)
 
-	body, _ := json.Marshal(displayRequest{Name: "Kitchen", Slug: "kitchen"})
+	body, _ := json.Marshal(displayRequest{Name: "Kitchen", Slug: "kitchen", ShowTopBar: true, ShowBottomBar: true})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays", body))
 	if rec.Code != http.StatusCreated {
@@ -110,6 +110,9 @@ func TestDisplayCRUDEndpoints(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &created)
 	if created.Name != "Kitchen" || created.Slug != "kitchen" || created.RotationSeconds != 30 {
 		t.Errorf("created = %+v, unexpected values (want default rotation_seconds=30)", created)
+	}
+	if !created.ShowTopBar || !created.ShowBottomBar {
+		t.Errorf("created bars = (%v, %v), want (true, true)", created.ShowTopBar, created.ShowBottomBar)
 	}
 
 	rec = httptest.NewRecorder()
@@ -130,6 +133,9 @@ func TestDisplayCRUDEndpoints(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &updated)
 	if updated.Name != "Office" || updated.Slug != "office" || updated.RotationSeconds != 60 {
 		t.Errorf("updated = %+v, unexpected values", updated)
+	}
+	if updated.ShowTopBar || updated.ShowBottomBar {
+		t.Errorf("updated bars = (%v, %v), want (false, false) since the update omitted them", updated.ShowTopBar, updated.ShowBottomBar)
 	}
 
 	rec = httptest.NewRecorder()

@@ -204,7 +204,7 @@ one.
 | `task_lists` | Same shape as `calendars`, for the `tasks` contract (no writer uses this yet) |
 | `shape_events`, `shape_tasks`, `shape_weather_current`, `shape_weather_forecast`, `shape_home_devices`, `shape_packages`, `shape_infrastructure`, `shape_media_status` | One table per data shape, typed columns matching its Go struct — no JSON blobs. See `internal/db/migrations/002_shapes.sql`. |
 | `themes` | Named JSON token sets (`internal/db/migrations/004_displays.sql`). A display references one as its base theme; a card can override it via `cards.theme_override` |
-| `displays` | A physical output routed at `/display/{slug}` (unique). `theme_id` nullable FK to `themes`; `rotation_seconds` how often it rotates through its screens |
+| `displays` | A physical output routed at `/display/{slug}` (unique). `theme_id` nullable FK to `themes`; `rotation_seconds` how often it rotates through its screens; `show_top_bar`/`show_bottom_bar` toggle the fixed clock/weather and now-playing/alerts bars |
 | `screens` | A page within a display (`ON DELETE CASCADE` from `displays`). Owns its own grid (`columns`, `row_height`, `gap`, all in pixels except `columns`) rather than inheriting one from its display; `position` orders rotation |
 | `cards` | A positioned UI plugin on a screen's grid (`ON DELETE CASCADE` from `screens`). `x`/`y`/`w`/`h` are grid units. `data_plugin_instance_id` (nullable, `ON DELETE SET NULL`) is which configured plugin instance it reads from — nullable because a card's UI plugin might need no data (clock) or the admin hasn't wired one up yet; `SET NULL` rather than cascade so deleting an unrelated data plugin instance doesn't silently delete a card |
 
@@ -214,7 +214,7 @@ additionally cascade from `calendars`/`task_lists`.
 
 CRUD for all four tables above is built (see [REST API Routes](#rest-api-routes)
 below) — this is the display *hierarchy's data layer*. Nothing renders
-it yet; see [Display Hierarchy](#display-hierarchy-schema-built-designer-planned)
+it yet; see [Display Hierarchy](#display-hierarchy-displays-and-screens-built-card-designer-planned)
 and [Theme Cascade](#theme-cascade-schema-built-application-planned).
 
 ### Planned
@@ -281,16 +281,20 @@ routes above already do (see [Divergence](#divergence-from-the-original-proposal
 
 ---
 
-## Display Hierarchy (Schema built, Designer planned)
+## Display Hierarchy (Displays and screens built, card Designer planned)
 
 The `displays`/`screens`/`cards` tables and their full admin CRUD API
-exist (see [SQLite Schema](#sqlite-schema) and [REST API Routes](#rest-api-routes) above)
-— an admin can already build up the hierarchy below by hand, one API
-call at a time. What's still planned is #19: the admin UI's visual
-Designer (drag-and-drop card placement) and the display frontend
-actually reading this data to render a grid — today `/display/{slug}`
-is still just a placeholder (`DisplayApp.tsx`) with no data fetch of its
-own.
+exist (see [SQLite Schema](#sqlite-schema) and [REST API Routes](#rest-api-routes)
+above), and so does an admin UI for the top two levels: `/admin/displays`
+(`DisplaysPage.tsx`) lists, creates, edits, and deletes displays (name,
+slug, theme, rotation interval, top/bottom bar toggles), and lets an
+admin manage a display's screens inline -- add, edit, delete, and
+reorder (simple ▲/▼ buttons swapping `position`, not drag-and-drop).
+What's still planned: a visual card Designer (drag-and-drop placement
+onto a screen's grid -- today a card can only be created via the raw
+API) and the display frontend actually reading any of this to render a
+grid -- `/display/{slug}` is still just a placeholder (`DisplayApp.tsx`)
+with no data fetch of its own. Both land with #23.
 
 ```
 Display   "Kitchen"  --  /display/kitchen
@@ -328,9 +332,12 @@ Display   "Kitchen"  --  /display/kitchen
 The `themes` table and its admin CRUD API exist (a theme is just a
 name plus an opaque JSON `tokens` blob and an `is_default` flag — see
 [SQLite Schema](#sqlite-schema)/[REST API Routes](#rest-api-routes)); `displays.theme_id`
-and `cards.theme_override` are wired up to reference it. What's *not*
-built yet: an admin theme editor UI, and anything on the display side
-that actually reads a display's theme and applies it — that's #19/#23.
+and `cards.theme_override` are wired up to reference it, and
+`/admin/displays` (#19) lets an admin *pick* an existing theme for a
+display from a dropdown. What's *not* built yet: an admin UI for
+actually creating/editing a theme's tokens (the "Themes" nav item still
+shows "Soon"), and anything on the display side that actually reads a
+display's theme and applies it — that's #23.
 
 The token **type** the `tokens`/`theme_override` JSON blobs are meant to
 hold already exists and is in use today, independent of the DB table:
@@ -503,6 +510,12 @@ noted here so that doc's specifics aren't taken as current fact.
   instance to read from (there can be more than one of the same plugin
   type, e.g. two `ics-feed` instances for two calendars), not just which
   UI plugin renders it.
+- **`displays.show_top_bar`/`show_bottom_bar`** (#19) aren't in the
+  proposal's `displays` table at all -- the fixed top/bottom bar zones
+  were described only in the Grid System diagram, with no way to turn
+  them off per display. Added as plain booleans (default on) rather
+  than folding them into `theme_id`'s JSON, since they're structural
+  (whether a zone renders) rather than a visual token.
 
 When you find another one of these while implementing an issue, add it
 here rather than silently leaving the proposal doc wrong.

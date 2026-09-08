@@ -12,6 +12,7 @@ interface PluginInstance {
   enabled: boolean;
   status: 'synced' | 'retrying' | 'pending' | 'disabled';
   last_error?: string;
+  oauth_authorized: boolean;
 }
 
 const statusLabel: Record<PluginInstance['status'], string> = {
@@ -37,6 +38,7 @@ export default function PluginsPage() {
   const [instances, setInstances] = useState<PluginInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [panel, setPanel] = useState<Panel>(null);
+  const [oauthNotice, setOauthNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const load = useCallback(() => {
     return Promise.all([
@@ -52,6 +54,44 @@ export default function PluginsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // The OAuth callback (internal/api/oauth_handlers.go) redirects the
+  // browser back here with ?oauth=success or ?oauth=error&message=... --
+  // it can't hand the result back any other way, since granting consent
+  // is a real full-page navigation away to the provider and back (which,
+  // notably, also means the in-memory admin session is gone and the
+  // login gate reappears; the token itself was already saved
+  // server-side before this redirect, so nothing is lost, just the
+  // browser session). Read it once on mount and scrub it from the URL so
+  // a refresh doesn't re-show the same notice.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauth = params.get('oauth');
+    if (oauth === 'success') {
+      setOauthNotice({ kind: 'success', text: 'Plugin authorized.' });
+    } else if (oauth === 'error') {
+      setOauthNotice({ kind: 'error', text: params.get('message') || 'Authorization failed.' });
+    }
+    if (oauth) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
+
+  async function handleAuthorize(instance: PluginInstance) {
+    const res = await apiFetch(`/api/admin/plugins/instances/${instance.id}/oauth/authorize`);
+    if (!res.ok) {
+      setOauthNotice({ kind: 'error', text: await readErrorMessage(res, 'Could not start authorization') });
+      return;
+    }
+    const { authorize_url }: { authorize_url: string } = await res.json();
+    window.location.href = authorize_url;
+  }
+
+  async function handleDeauthorize(instance: PluginInstance) {
+    if (!confirm(`Revoke authorization for "${instance.instance_name}"?`)) return;
+    await apiFetch(`/api/admin/plugins/instances/${instance.id}/oauth`, { method: 'DELETE' });
+    load();
+  }
 
   async function submitInstance(pluginID: string, values: ManifestFormValues, url: string, method: 'POST' | 'PUT') {
     const res = await apiFetch(url, {
@@ -101,6 +141,12 @@ export default function PluginsPage() {
     <div className="plugins-page">
       <h1>Data Plugins</h1>
 
+      {oauthNotice && (
+        <p className={`oauth-notice oauth-notice-${oauthNotice.kind}`} role="alert">
+          {oauthNotice.text}
+        </p>
+      )}
+
       <section>
         <h2>Available Plugins</h2>
         <div className="available-plugins">
@@ -140,6 +186,22 @@ export default function PluginsPage() {
                 <label className="mini-toggle" title="Enabled">
                   <input type="checkbox" checked={inst.enabled} onChange={() => handleToggleEnabled(inst)} />
                 </label>
+                {manifests.find((m) => m.id === inst.plugin_id)?.auth_type === 'oauth2' &&
+                  (inst.oauth_authorized ? (
+                    <>
+                      <span className="oauth-authorized-pill">Authorized</span>
+                      <button className="btn-secondary" onClick={() => handleAuthorize(inst)}>
+                        Re-authorize
+                      </button>
+                      <button className="btn-secondary" onClick={() => handleDeauthorize(inst)}>
+                        Revoke
+                      </button>
+                    </>
+                  ) : (
+                    <button className="btn-primary" onClick={() => handleAuthorize(inst)}>
+                      Authorize
+                    </button>
+                  ))}
                 <button
                   className="btn-secondary"
                   onClick={() => {

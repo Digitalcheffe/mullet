@@ -80,16 +80,20 @@ func handleListPlugins(registry *plugindata.Registry) http.HandlerFunc {
 }
 
 type pluginInstanceResponse struct {
-	ID             int             `json:"id"`
-	PluginID       string          `json:"plugin_id"`
-	InstanceName   string          `json:"instance_name"`
-	Config         json.RawMessage `json:"config"`
-	RefreshSeconds int             `json:"refresh_seconds"`
-	Enabled        bool            `json:"enabled"`
-	Status         string          `json:"status"`
-	LastError      *string         `json:"last_error,omitempty"`
+	ID              int             `json:"id"`
+	PluginID        string          `json:"plugin_id"`
+	InstanceName    string          `json:"instance_name"`
+	Config          json.RawMessage `json:"config"`
+	RefreshSeconds  int             `json:"refresh_seconds"`
+	Enabled         bool            `json:"enabled"`
+	Status          string          `json:"status"`
+	LastError       *string         `json:"last_error,omitempty"`
+	OAuthAuthorized bool            `json:"oauth_authorized"`
 }
 
+// toInstanceResponse builds the response for one instance. oauthAuthorized
+// is looked up separately (see withOAuthStatus) rather than joined here,
+// since only an oauth2-type plugin's instances need the extra query.
 func toInstanceResponse(s db.PluginInstanceStatus) pluginInstanceResponse {
 	config := s.Config
 	if config == "" {
@@ -107,8 +111,25 @@ func toInstanceResponse(s db.PluginInstanceStatus) pluginInstanceResponse {
 	}
 }
 
+// withOAuthStatus fills in OAuthAuthorized for an oauth2-type plugin's
+// instance response; a non-OAuth2 plugin's response is returned as-is
+// (always false, and no extra query).
+func withOAuthStatus(sqldb *sql.DB, registry *plugindata.Registry, resp pluginInstanceResponse) pluginInstanceResponse {
+	plugin, ok := registry.Get(resp.PluginID)
+	if !ok || plugin.Manifest().AuthType != "oauth2" {
+		return resp
+	}
+	authorized, err := db.HasOAuthToken(sqldb, resp.ID)
+	if err != nil {
+		log.Printf("checking oauth status for instance %d: %v", resp.ID, err)
+		return resp
+	}
+	resp.OAuthAuthorized = authorized
+	return resp
+}
+
 // handleListPluginInstances lists every configured plugin instance.
-func handleListPluginInstances(sqldb *sql.DB) http.HandlerFunc {
+func handleListPluginInstances(sqldb *sql.DB, registry *plugindata.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		statuses, err := db.ListPluginInstanceStatuses(sqldb)
 		if err != nil {
@@ -117,7 +138,7 @@ func handleListPluginInstances(sqldb *sql.DB) http.HandlerFunc {
 		}
 		resp := make([]pluginInstanceResponse, len(statuses))
 		for i, s := range statuses {
-			resp[i] = toInstanceResponse(s)
+			resp[i] = withOAuthStatus(sqldb, registry, toInstanceResponse(s))
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -178,7 +199,7 @@ func handleCreatePluginInstance(sqldb *sql.DB, registry *plugindata.Registry, sc
 			log.Printf("plugin instance %d created but scheduler reload failed: %v", id, err)
 		}
 
-		writeInstance(w, sqldb, id, http.StatusCreated)
+		writeInstance(w, sqldb, registry, id, http.StatusCreated)
 	}
 }
 
@@ -243,7 +264,7 @@ func handleUpdatePluginInstance(sqldb *sql.DB, registry *plugindata.Registry, sc
 			log.Printf("plugin instance %d updated but scheduler reload failed: %v", id, err)
 		}
 
-		writeInstance(w, sqldb, id, http.StatusOK)
+		writeInstance(w, sqldb, registry, id, http.StatusOK)
 	}
 }
 
@@ -306,7 +327,7 @@ func handleTestPluginInstance(sched *scheduler.Scheduler) http.HandlerFunc {
 	}
 }
 
-func writeInstance(w http.ResponseWriter, sqldb *sql.DB, id int, status int) {
+func writeInstance(w http.ResponseWriter, sqldb *sql.DB, registry *plugindata.Registry, id int, status int) {
 	inst, err := db.GetPluginInstance(sqldb, id)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -314,7 +335,7 @@ func writeInstance(w http.ResponseWriter, sqldb *sql.DB, id int, status int) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(toInstanceResponse(inst))
+	json.NewEncoder(w).Encode(withOAuthStatus(sqldb, registry, toInstanceResponse(inst)))
 }
 
 // parseInstanceConfig decodes a submitted config (a JSON object, or

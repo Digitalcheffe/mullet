@@ -90,6 +90,28 @@
   align-items: center;
 }
 
+.oauth-authorized-pill {
+  font: 700 10.5px var(--font-body);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ok);
+  flex: none;
+}
+
+.oauth-notice {
+  font: 600 12.5px var(--font-body);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+}
+.oauth-notice-success {
+  color: var(--ok);
+  background: color-mix(in oklch, var(--ok) 14%, transparent);
+}
+.oauth-notice-error {
+  color: var(--error);
+  background: var(--error-bg);
+}
+
 .modal-scrim {
   position: fixed;
   inset: 0;

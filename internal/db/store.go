@@ -14,11 +14,10 @@ import (
 type shapeWriter func(tx *sql.Tx, pluginInstanceID int, rows []any) error
 
 // shapeWriters covers the shapes whose write scope is just
-// plugin_instance_id (Replace strategy). events and tasks are Upsert
-// strategy scoped by calendar_id/task_list_id, which requires metadata
-// table rows (calendars/task_lists) that don't exist until a plugin with
-// entity discovery is wired up (issues #16, #24-26); their writers land
-// with that work.
+// plugin_instance_id (Replace strategy), plus events and tasks, which are
+// Upsert strategy scoped by calendar_id/task_list_id and need a plugin
+// with entity discovery to populate the calendars/task_lists metadata
+// tables first (icsfeed for events; msgraphcalendar/msgraphtodo for both).
 var shapeWriters = map[string]shapeWriter{
 	"weather_current":  writeWeatherCurrent,
 	"weather_forecast": writeWeatherForecast,
@@ -27,6 +26,7 @@ var shapeWriters = map[string]shapeWriter{
 	"infrastructure":   writeInfrastructure,
 	"media_status":     writeMediaStatus,
 	"events":           writeEvents,
+	"tasks":            writeTasks,
 }
 
 // WriteShape replaces all rows for pluginInstanceID in the table for
@@ -276,6 +276,86 @@ func writeEvents(tx *sql.Tx, pluginInstanceID int, rows []any) error {
 		for _, e := range calEvents {
 			if _, err := insertEvent.Exec(e.ID, pluginInstanceID, calendarID, e.Title, e.Start, e.End, e.AllDay, e.Location, e.Description); err != nil {
 				return fmt.Errorf("inserting shape_events row %q: %w", e.ID, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func writeTasks(tx *sql.Tx, pluginInstanceID int, rows []any) error {
+	tasks := make([]shapes.Task, len(rows))
+	for i, row := range rows {
+		t, ok := row.(shapes.Task)
+		if !ok {
+			return fmt.Errorf("tasks writer: expected shapes.Task, got %T", row)
+		}
+		if t.TaskListExternalID == "" {
+			return fmt.Errorf("tasks writer: task %q has no TaskListExternalID", t.ID)
+		}
+		tasks[i] = t
+	}
+
+	byList := map[string][]shapes.Task{}
+	var order []string
+	for _, t := range tasks {
+		if _, seen := byList[t.TaskListExternalID]; !seen {
+			order = append(order, t.TaskListExternalID)
+		}
+		byList[t.TaskListExternalID] = append(byList[t.TaskListExternalID], t)
+	}
+
+	upsertTaskList, err := tx.Prepare(`
+		INSERT INTO task_lists (plugin_instance_id, external_id, name)
+		VALUES (?, ?, ?)
+		ON CONFLICT(plugin_instance_id, external_id) DO UPDATE SET name = excluded.name
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing task_lists upsert: %w", err)
+	}
+	defer upsertTaskList.Close()
+
+	selectTaskListID, err := tx.Prepare(`SELECT id FROM task_lists WHERE plugin_instance_id = ? AND external_id = ?`)
+	if err != nil {
+		return fmt.Errorf("preparing task_lists lookup: %w", err)
+	}
+	defer selectTaskListID.Close()
+
+	deleteTasks, err := tx.Prepare(`DELETE FROM shape_tasks WHERE plugin_instance_id = ? AND task_list_id = ?`)
+	if err != nil {
+		return fmt.Errorf("preparing shape_tasks delete: %w", err)
+	}
+	defer deleteTasks.Close()
+
+	insertTask, err := tx.Prepare(`
+		INSERT INTO shape_tasks
+			(id, plugin_instance_id, task_list_id, title, completed, due_date, sort_order)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing shape_tasks insert: %w", err)
+	}
+	defer insertTask.Close()
+
+	for _, externalID := range order {
+		listTasks := byList[externalID]
+		name := listTasks[0].TaskListName
+		if _, err := upsertTaskList.Exec(pluginInstanceID, externalID, name); err != nil {
+			return fmt.Errorf("upserting task list %q: %w", externalID, err)
+		}
+
+		var taskListID int
+		if err := selectTaskListID.QueryRow(pluginInstanceID, externalID).Scan(&taskListID); err != nil {
+			return fmt.Errorf("looking up task list %q: %w", externalID, err)
+		}
+
+		if _, err := deleteTasks.Exec(pluginInstanceID, taskListID); err != nil {
+			return fmt.Errorf("clearing shape_tasks for task list %q: %w", externalID, err)
+		}
+
+		for _, t := range listTasks {
+			if _, err := insertTask.Exec(t.ID, pluginInstanceID, taskListID, t.Title, t.Completed, t.DueDate, t.SortOrder); err != nil {
+				return fmt.Errorf("inserting shape_tasks row %q: %w", t.ID, err)
 			}
 		}
 	}

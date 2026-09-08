@@ -139,6 +139,8 @@ interleave with a scheduled tick on the same plugin type.
 | `open-meteo` | `weather_current`, `weather_forecast` | none | Free, no API key |
 | `openweathermap` | `weather_current`, `weather_forecast` | API key | |
 | `ics-feed` | `events` | none, or HTTP basic auth | Universal ICS/iCal calendar connector; one plugin instance = one feed/calendar (add the plugin again for a second feed) |
+| `msgraph-calendar` | `events` | OAuth2 | Outlook/Microsoft 365 calendar via Microsoft Graph. Consumer accounts only (`tenant` defaults to `"consumers"`) -- see [OAuth2](#oauth2-built) |
+| `msgraph-todo` | `tasks` | OAuth2 | Microsoft To-Do via Microsoft Graph. Same consumer-account scope as `msgraph-calendar` |
 
 ---
 
@@ -149,14 +151,14 @@ interleave with a scheduled tick on the same plugin type.
 `AuthURL`, `TokenURL`, `Scopes`, `TenantField`, see [The `DataPlugin`
 interface](#the-dataplugin-interface)) drives -- it knows nothing about
 Microsoft specifically, so a future non-Microsoft OAuth2 plugin (Google
-Calendar, say) works the same way without touching this package. No
-plugin sets `AuthType: "oauth2"` yet; #25's Microsoft Graph plugins are
-its first real consumer. Built on `golang.org/x/oauth2`, not MSAL --
-MSAL is Microsoft-specific (its client types assume Microsoft's
-authority-URL shape), which would have made a "generic" handler
-Microsoft-only by construction; `msgraph-sdk-go` isn't a dependency at
-all yet, since it's a Graph *API* client, not part of the OAuth2 flow --
-that lands with #25 when a plugin actually calls Graph endpoints.
+Calendar, say) works the same way without touching this package.
+`msgraph-calendar`/`msgraph-todo` (#25) are its first real consumers.
+Built on `golang.org/x/oauth2`, not MSAL -- MSAL is Microsoft-specific
+(its client types assume Microsoft's authority-URL shape), which would
+have made a "generic" handler Microsoft-only by construction;
+`msgraph-sdk-go` (the Graph *API* client, not part of the OAuth2 flow)
+is only a dependency of the two `msgraph-*` plugin packages themselves,
+not of `internal/oauth`.
 
 **Manifest contract**: an OAuth2 plugin's manifest declares `client_id`
 and `client_secret` as ordinary `SetupField`s (the same way
@@ -183,12 +185,22 @@ comes back. `GET /api/oauth/callback` -- deliberately outside
 browser navigating away from the provider, not an authenticated API
 call -- exchanges the code, upserts `oauth_tokens`, and redirects to
 `/admin/plugins?oauth=success` or `?oauth=error&message=...` (the SPA
-reads this once on mount and shows a banner). `EnsureFreshToken`
-(`internal/oauth/refresh.go`) is what a plugin's `Configure` step will
-call before each `Fetch` -- returns the stored access token unchanged if
-it's not close to expiring, otherwise refreshes and persists a new one
-first; not wired into the scheduler yet since no plugin needs it until
-#25.
+reads this once on mount and shows a banner) -- and reloads the
+scheduler immediately (`sched.Reload()`) so a just-authorized instance
+picks up its token on this tick rather than waiting out a full
+`refresh_seconds` (`DELETE .../oauth` does the same, on revoke).
+`EnsureFreshToken` (`internal/oauth/refresh.go`) returns the stored
+access token unchanged if it's not close to expiring, otherwise
+refreshes and persists a new one first. The scheduler
+(`internal/scheduler/scheduler.go`'s `configureInstance`) calls it for
+every `AuthType: "oauth2"` instance right before `Configure`, injecting
+the result under the well-known `cfg["access_token"]` key alongside the
+plugin's own declared config -- a plugin never touches `internal/oauth`
+directly, it just reads `access_token` out of `cfg` the same way
+`openweathermap` reads `api_key`. An instance that's never been
+authorized (or whose refresh fails, e.g. a revoked grant) fails
+`Configure` with a plain error, recorded the same way any other
+plugin's configure failure is.
 
 Note the full-page navigation this requires (there's no way to reach a
 real provider's consent screen without one) collides with the admin
@@ -202,6 +214,30 @@ earlier work, not something #24 introduced.
 Admin UI: `PluginsPage.tsx` shows Authorize (or Re-authorize + Revoke,
 once `pluginInstanceResponse.oauth_authorized` is true) on any instance
 of an `auth_type: "oauth2"` plugin.
+
+**Discovery** (#25): a `SetupField` can be marked `Dynamic: true`
+(`internal/plugins/data/plugin.go`) when its real choices only exist
+once an instance has live credentials to ask the provider with --
+`msgraph-calendar`'s "calendars" and `msgraph-todo`'s "task_lists" are
+the two so far ("which of your Outlook calendars" can't be known before
+OAuth). Its manifest `Options` stays empty; the plugin instead
+implements `plugindata.Discoverable` (`Discover(ctx, field, cfg) →
+[]DiscoveredOption`, an optional interface a plugin opts into, not part
+of `DataPlugin` itself), and `GET .../oauth/discover?field=...` calls it
+through the same `Registry.WithPlugin` serialization as `Configure`/
+`Fetch`, with a freshly-ensured token injected into `cfg` the same way
+the scheduler does. `ManifestForm.tsx` fetches this itself, once an
+instance both exists and is authorized (impossible before that -- you
+can't discover a specific account's calendars before picking one), and
+renders the result as an ordinary multi-select; before that, or while
+the instance is still just being added, it shows a plain "authorize
+first" note instead of a non-functional empty select.
+`validateSetupFields` (`internal/api/plugin_handlers.go`) skips its
+usual against-`Options` check for a `Dynamic` field, since discovered
+values are never in the manifest's own (empty) `Options` list to check
+against -- found by live-testing the UI end-to-end: without this, every
+submitted selection was rejected as "invalid value", the actual bug
+this session's live verification caught.
 
 **Encryption at rest**: `access_token`/`refresh_token` are AES-256-GCM
 encrypted before being written to `oauth_tokens` and decrypted
@@ -228,21 +264,25 @@ through `map[string]any` on the write side.
 (`internal/db/store.go`) looks up a `shapeWriter` function for the shape
 name and runs it in one transaction. Every writer so far follows a
 **Replace** strategy: delete this instance's existing rows for the
-shape, insert the fresh set. `events` is the one exception —
+shape, insert the fresh set. `events` and `tasks` are the exception —
 see below.
 
-**Entity discovery for `events`.** A plugin has no DB handle, so it
-can't resolve a real `calendars.id` foreign key itself. Instead
-`shapes.CalendarEvent` carries `CalendarExternalID` / `CalendarName` /
-`CalendarColor` (write-time-only fields, not real `shape_events`
-columns) that a plugin sets on every row it returns. `writeEvents`
-groups rows by `CalendarExternalID`, upserts a `calendars` row per
-distinct one (the "entity discovery" step — insert on first sight,
-update name/color on every fetch after), resolves the real
-`calendars.id`, and replaces only that calendar's `shape_events` rows —
-scoped by `(plugin_instance_id, calendar_id)`, so a plugin instance
-covering multiple calendars in one fetch never clobbers one calendar's
-data while updating another's.
+**Entity discovery for `events`/`tasks`.** A plugin has no DB handle, so
+it can't resolve a real `calendars.id`/`task_lists.id` foreign key
+itself. Instead `shapes.CalendarEvent` carries `CalendarExternalID` /
+`CalendarName` / `CalendarColor`, and `shapes.Task` carries
+`TaskListExternalID` / `TaskListName` (write-time-only fields, not real
+`shape_events`/`shape_tasks` columns) that a plugin sets on every row it
+returns. `writeEvents`/`writeTasks` group rows by that external ID,
+upsert a `calendars`/`task_lists` row per distinct one (the "entity
+discovery" step — insert on first sight, update the name/color on every
+fetch after), resolve the real `calendars.id`/`task_lists.id`, and
+replace only that calendar/list's rows — scoped by
+`(plugin_instance_id, calendar_id)` / `(plugin_instance_id,
+task_list_id)`, so a plugin instance covering several calendars or lists
+in one fetch never clobbers one's data while updating another's.
+`ics-feed` and `msgraph-calendar` both populate `events` this way;
+`msgraph-todo` is `tasks`'s first (and so far only) writer.
 
 ### Read path
 
@@ -274,7 +314,7 @@ one.
 | `system_settings` | Server-level key/value settings, including the persisted JWT signing secret |
 | `data_plugin_instances` | Every configured plugin instance: which plugin, its JSON config, enabled flag, refresh interval, last fetch time/error |
 | `calendars` | Discovered calendars, one row per `(plugin_instance_id, external_id)` — see [entity discovery](#write-path) |
-| `task_lists` | Same shape as `calendars`, for the `tasks` contract (no writer uses this yet) |
+| `task_lists` | Same shape as `calendars`, for the `tasks` contract -- see [entity discovery](#write-path) |
 | `shape_events`, `shape_tasks`, `shape_weather_current`, `shape_weather_forecast`, `shape_home_devices`, `shape_packages`, `shape_infrastructure`, `shape_media_status` | One table per data shape, typed columns matching its Go struct — no JSON blobs. See `internal/db/migrations/002_shapes.sql`. |
 | `themes` | Named JSON token sets (`internal/db/migrations/004_displays.sql`). A display references one as its base theme; a card can override it via `cards.theme_override`. Seeded with one row ("Dark Glass", `is_default`) by `006_seed_default_theme.sql` |
 | `displays` | A physical output routed at `/display/{slug}` (unique). `theme_id` nullable FK to `themes`; `rotation_seconds` how often it rotates through its screens; `show_top_bar`/`show_bottom_bar` toggle the fixed clock/weather and now-playing/alerts bars |
@@ -324,6 +364,7 @@ All routes below are wired in `internal/api/router.go`.
 | `POST /api/admin/plugins/instances/{id}/test` | JWT | Run one configure+fetch cycle now, report success/error |
 | `GET /api/admin/plugins/instances/{id}/oauth/authorize` | JWT | Returns `{authorize_url}` for an OAuth2 plugin instance -- JSON, not a redirect, since the caller can't carry a Bearer header through a real browser navigation; see [OAuth2](#oauth2-built) |
 | `DELETE /api/admin/plugins/instances/{id}/oauth` | JWT | De-authorize an instance (deletes its stored token; the instance itself stays) |
+| `GET /api/admin/plugins/instances/{id}/oauth/discover?field=...` | JWT | Live options for a `Dynamic` SetupField (requires the instance to already be authorized) -- see [OAuth2](#oauth2-built) |
 | `GET /api/oauth/callback` | none (see [OAuth2](#oauth2-built)) | The OAuth2 provider's redirect target after consent; exchanges the code, stores the token, redirects to `/admin/plugins?oauth=...` |
 | `GET`/`POST /api/admin/themes` | JWT | List / create themes |
 | `GET`/`PUT`/`DELETE /api/admin/themes/{id}` | JWT | Get / update / remove a theme (`DELETE` is `409` if a display still uses it) |
@@ -760,6 +801,16 @@ noted here so that doc's specifics aren't taken as current fact.
   scoped this work asked for "a live preview panel with sample card
   grid," which is what got built -- simpler, and not dependent on the
   Designer or a real screen existing yet.
+- **`msgraph-calendar`/`msgraph-todo`** (#25) are scoped to personal
+  (consumer) Microsoft accounts only, not the issue's original "test
+  with enterprise account (Entra ID)" requirement -- an explicit,
+  deliberate scope cut, not an oversight. Nothing hardcodes "consumers"
+  below the manifest's own default value (`OAuthConfig.TenantField`
+  still works exactly like it would for a real tenant GUID), so an
+  enterprise tenant would likely work mechanically; it just hasn't been
+  tested against one, and Entra ID's admin-consent flow (a whole
+  separate flow the OAuth2 handshake doesn't implement) would need real
+  testing before calling it supported.
 
 When you find another one of these while implementing an issue, add it
 here rather than silently leaving the proposal doc wrong.

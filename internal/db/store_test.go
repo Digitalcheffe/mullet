@@ -219,3 +219,117 @@ func TestWriteEventsMissingCalendarExternalID(t *testing.T) {
 		t.Error("WriteShape with no CalendarExternalID: expected error, got nil")
 	}
 }
+
+func TestWriteTasksCreatesTaskListAndTasks(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	due := "2026-01-15"
+	rows := []any{
+		shapes.Task{
+			ID: "task-1", Title: "Buy milk", DueDate: &due, SortOrder: 1,
+			TaskListExternalID: "default", TaskListName: "Tasks",
+		},
+	}
+	if err := WriteShape(sqldb, "tasks", 1, rows); err != nil {
+		t.Fatalf("WriteShape: %v", err)
+	}
+
+	var listID int
+	var name string
+	if err := sqldb.QueryRow(`SELECT id, name FROM task_lists WHERE plugin_instance_id = 1 AND external_id = 'default'`).Scan(&listID, &name); err != nil {
+		t.Fatalf("reading task_lists row: %v", err)
+	}
+	if name != "Tasks" {
+		t.Errorf("task list name = %q, want Tasks", name)
+	}
+
+	var title string
+	var gotListID int
+	var completed int
+	if err := sqldb.QueryRow(`SELECT title, task_list_id, completed FROM shape_tasks WHERE id = 'task-1' AND plugin_instance_id = 1`).Scan(&title, &gotListID, &completed); err != nil {
+		t.Fatalf("reading shape_tasks row: %v", err)
+	}
+	if title != "Buy milk" || gotListID != listID || completed != 0 {
+		t.Errorf("task = (title=%q, task_list_id=%d, completed=%d), want (Buy milk, %d, 0)", title, gotListID, completed, listID)
+	}
+}
+
+func TestWriteTasksReplacesWithinTaskList(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	first := []any{shapes.Task{ID: "task-1", Title: "Old", TaskListExternalID: "default", TaskListName: "Tasks"}}
+	if err := WriteShape(sqldb, "tasks", 1, first); err != nil {
+		t.Fatalf("WriteShape (first): %v", err)
+	}
+
+	second := []any{shapes.Task{ID: "task-2", Title: "New", TaskListExternalID: "default", TaskListName: "Tasks"}}
+	if err := WriteShape(sqldb, "tasks", 1, second); err != nil {
+		t.Fatalf("WriteShape (second): %v", err)
+	}
+
+	var count int
+	if err := sqldb.QueryRow(`SELECT COUNT(*) FROM shape_tasks WHERE plugin_instance_id = 1`).Scan(&count); err != nil {
+		t.Fatalf("counting rows: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("after second write: %d rows, want 1 (replace, not append)", count)
+	}
+
+	var title string
+	if err := sqldb.QueryRow(`SELECT title FROM shape_tasks WHERE plugin_instance_id = 1`).Scan(&title); err != nil {
+		t.Fatalf("reading title: %v", err)
+	}
+	if title != "New" {
+		t.Errorf("title = %q, want %q (stale task should be replaced)", title, "New")
+	}
+
+	var listCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(*) FROM task_lists WHERE plugin_instance_id = 1`).Scan(&listCount); err != nil {
+		t.Fatalf("counting task_lists: %v", err)
+	}
+	if listCount != 1 {
+		t.Errorf("task_lists count = %d, want 1 (reused, not recreated)", listCount)
+	}
+}
+
+func TestWriteTasksScopesReplaceToItsOwnTaskList(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	both := []any{
+		shapes.Task{ID: "work-1", Title: "Ship it", TaskListExternalID: "work", TaskListName: "Work"},
+		shapes.Task{ID: "home-1", Title: "Mow lawn", TaskListExternalID: "home", TaskListName: "Home"},
+	}
+	if err := WriteShape(sqldb, "tasks", 1, both); err != nil {
+		t.Fatalf("WriteShape (both): %v", err)
+	}
+
+	workOnly := []any{shapes.Task{ID: "work-2", Title: "Ship it again", TaskListExternalID: "work", TaskListName: "Work"}}
+	if err := WriteShape(sqldb, "tasks", 1, workOnly); err != nil {
+		t.Fatalf("WriteShape (work only): %v", err)
+	}
+
+	var homeCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(*) FROM shape_tasks WHERE id = 'home-1' AND plugin_instance_id = 1`).Scan(&homeCount); err != nil {
+		t.Fatalf("counting home tasks: %v", err)
+	}
+	if homeCount != 1 {
+		t.Error("home-1 task was removed by a write scoped to the work task list")
+	}
+
+	var workCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(*) FROM shape_tasks WHERE plugin_instance_id = 1 AND task_list_id = (SELECT id FROM task_lists WHERE external_id = 'work' AND plugin_instance_id = 1)`).Scan(&workCount); err != nil {
+		t.Fatalf("counting work tasks: %v", err)
+	}
+	if workCount != 1 {
+		t.Errorf("work task list has %d tasks, want 1 (work-1 replaced by work-2)", workCount)
+	}
+}
+
+func TestWriteTasksMissingTaskListExternalID(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	rows := []any{shapes.Task{ID: "task-1", Title: "No list"}}
+	if err := WriteShape(sqldb, "tasks", 1, rows); err == nil {
+		t.Error("WriteShape with no TaskListExternalID: expected error, got nil")
+	}
+}

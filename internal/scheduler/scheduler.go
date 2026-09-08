@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Digitalcheffe/mullet/internal/db"
+	"github.com/Digitalcheffe/mullet/internal/oauth"
 	plugindata "github.com/Digitalcheffe/mullet/internal/plugins/data"
 )
 
@@ -94,7 +95,7 @@ func (s *Scheduler) Reload() error {
 			continue
 		}
 
-		if err := s.configureInstance(inst); err != nil {
+		if err := s.configureInstance(s.ctx, inst); err != nil {
 			log.Printf("scheduler: plugin %q (instance %d) configure failed: %v", inst.PluginID, inst.ID, err)
 			if err := db.RecordFetchError(s.db, inst.ID, err); err != nil {
 				log.Printf("scheduler: recording fetch error for instance %d: %v", inst.ID, err)
@@ -138,7 +139,7 @@ func (s *Scheduler) TestInstance(ctx context.Context, instanceID int) error {
 		RefreshInterval: status.RefreshInterval,
 	}
 
-	if err := s.configureInstance(inst); err != nil {
+	if err := s.configureInstance(ctx, inst); err != nil {
 		if rerr := db.RecordFetchError(s.db, inst.ID, err); rerr != nil {
 			log.Printf("scheduler: recording fetch error for instance %d: %v", inst.ID, rerr)
 		}
@@ -161,13 +162,34 @@ func (s *Scheduler) Stop() {
 }
 
 // configureInstance parses inst's stored config JSON and applies it to
-// its plugin, serialized via Registry.WithPlugin.
-func (s *Scheduler) configureInstance(inst db.PluginInstance) error {
+// its plugin, serialized via Registry.WithPlugin. For an OAuth2-type
+// plugin, it first injects a fresh access token under the well-known
+// "access_token" config key -- EnsureFreshToken transparently refreshes
+// the stored token if it's expiring soon, so the plugin's own Configure
+// never has to think about token lifetime, only about reading the token
+// out of cfg like any other credential.
+func (s *Scheduler) configureInstance(ctx context.Context, inst db.PluginInstance) error {
 	cfg := map[string]any{}
 	if inst.Config != "" {
 		if err := json.Unmarshal([]byte(inst.Config), &cfg); err != nil {
 			return fmt.Errorf("parsing config: %w", err)
 		}
+	}
+
+	plugin, ok := s.registry.Get(inst.PluginID)
+	if !ok {
+		return fmt.Errorf("plugin %q not registered", inst.PluginID)
+	}
+	if manifest := plugin.Manifest(); manifest.AuthType == "oauth2" {
+		oauthCfg, err := oauth.ConfigFromManifest(manifest, inst.Config, "")
+		if err != nil {
+			return fmt.Errorf("building oauth config: %w", err)
+		}
+		token, err := oauth.EnsureFreshToken(ctx, s.db, inst.ID, oauthCfg)
+		if err != nil {
+			return fmt.Errorf("getting oauth token: %w", err)
+		}
+		cfg["access_token"] = token
 	}
 
 	ok, err := s.registry.WithPlugin(inst.PluginID, func(p plugindata.DataPlugin) error {

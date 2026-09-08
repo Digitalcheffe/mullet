@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"github.com/Digitalcheffe/mullet/internal/db"
 	"github.com/Digitalcheffe/mullet/internal/oauth"
 	plugindata "github.com/Digitalcheffe/mullet/internal/plugins/data"
+	"github.com/Digitalcheffe/mullet/internal/scheduler"
 )
 
 // loadOAuthPlugin loads instanceID's plugin instance and manifest,
@@ -34,39 +36,6 @@ func loadOAuthPlugin(sqldb *sql.DB, registry *plugindata.Registry, instanceID in
 		return db.PluginInstanceStatus{}, plugindata.DataPluginManifest{}, fmt.Errorf("plugin %q is not an OAuth2 plugin", inst.PluginID)
 	}
 	return inst, manifest, nil
-}
-
-// oauthConfigFor builds this instance's oauth.Config from its manifest
-// (auth/token URLs, scopes, which field holds the tenant) and its own
-// submitted config (client_id, client_secret, and the tenant value) --
-// the two well-known keys every OAuth2 plugin's manifest is expected to
-// declare as SetupFields, the same way openweathermap declares "api_key"
-// for its own AuthType. redirectURL is derived per-request (see
-// callbackURL) rather than configured, so it always matches the host the
-// admin is actually browsing on.
-func oauthConfigFor(manifest plugindata.DataPluginManifest, instanceConfig string, redirectURL string) (oauth.Config, error) {
-	var cfg map[string]any
-	if err := json.Unmarshal([]byte(instanceConfig), &cfg); err != nil {
-		return oauth.Config{}, fmt.Errorf("instance config is not valid JSON: %w", err)
-	}
-	clientID, _ := cfg["client_id"].(string)
-	clientSecret, _ := cfg["client_secret"].(string)
-	if clientID == "" || clientSecret == "" {
-		return oauth.Config{}, errors.New("client_id and client_secret must be configured before authorizing")
-	}
-	var tenant string
-	if manifest.OAuthConfig.TenantField != "" {
-		tenant, _ = cfg[manifest.OAuthConfig.TenantField].(string)
-	}
-	return oauth.Config{
-		AuthURL:      manifest.OAuthConfig.AuthURL,
-		TokenURL:     manifest.OAuthConfig.TokenURL,
-		Scopes:       manifest.OAuthConfig.Scopes,
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		RedirectURL:  redirectURL,
-		Tenant:       tenant,
-	}, nil
 }
 
 // callbackURL derives this server's own OAuth callback URL from the
@@ -116,7 +85,7 @@ func handleOAuthAuthorize(sqldb *sql.DB, registry *plugindata.Registry, pending 
 			return
 		}
 
-		cfg, err := oauthConfigFor(manifest, inst.Config, callbackURL(r))
+		cfg, err := oauth.ConfigFromManifest(manifest, inst.Config, callbackURL(r))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -141,7 +110,7 @@ func handleOAuthAuthorize(sqldb *sql.DB, registry *plugindata.Registry, pending 
 // legitimate. Always ends in a redirect back to the admin plugin
 // instances page, success or failure, with a query param the frontend
 // reads to show a toast -- there's no user-facing error page of its own.
-func handleOAuthCallback(sqldb *sql.DB, registry *plugindata.Registry, pending *oauth.PendingStore) http.HandlerFunc {
+func handleOAuthCallback(sqldb *sql.DB, registry *plugindata.Registry, pending *oauth.PendingStore, sched *scheduler.Scheduler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if provErr := r.URL.Query().Get("error"); provErr != "" {
 			redirectResult(w, r, false, provErr)
@@ -161,7 +130,7 @@ func handleOAuthCallback(sqldb *sql.DB, registry *plugindata.Registry, pending *
 			redirectResult(w, r, false, err.Error())
 			return
 		}
-		cfg, err := oauthConfigFor(manifest, inst.Config, callbackURL(r))
+		cfg, err := oauth.ConfigFromManifest(manifest, inst.Config, callbackURL(r))
 		if err != nil {
 			redirectResult(w, r, false, err.Error())
 			return
@@ -183,7 +152,98 @@ func handleOAuthCallback(sqldb *sql.DB, registry *plugindata.Registry, pending *
 			return
 		}
 
+		// Without this, a freshly authorized instance keeps showing
+		// last tick's "not authorized yet" error (from before this
+		// token existed) until its next scheduled tick or an unrelated
+		// edit happens to trigger a reload -- same reasoning as every
+		// other plugin-instance mutation already reloading immediately.
+		if err := sched.Reload(); err != nil {
+			log.Printf("instance %d authorized but scheduler reload failed: %v", instanceID, err)
+		}
+
 		redirectResult(w, r, true, "")
+	}
+}
+
+type discoveredOptionResponse struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// handleOAuthDiscover backs a "populated after OAuth" SetupField (e.g.
+// msgraph-calendar's "calendars": there's no way to know which calendars
+// exist until the admin has actually authorized *an* account). Requires
+// the instance to be authorized already -- a plugin's Discover needs a
+// working access token the same way Fetch does. Runs through
+// Registry.WithPlugin like Configure/Fetch, so it can't race a concurrent
+// scheduled tick on the same plugin type's shared object.
+func handleOAuthDiscover(sqldb *sql.DB, registry *plugindata.Registry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		instanceID, err := strconv.Atoi(r.PathValue("id"))
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		field := r.URL.Query().Get("field")
+		if field == "" {
+			http.Error(w, "field query parameter is required", http.StatusBadRequest)
+			return
+		}
+
+		inst, manifest, err := loadOAuthPlugin(sqldb, registry, instanceID)
+		if errors.Is(err, db.ErrNotFound) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		oauthCfg, err := oauth.ConfigFromManifest(manifest, inst.Config, "")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		token, err := oauth.EnsureFreshToken(r.Context(), sqldb, instanceID, oauthCfg)
+		if err != nil {
+			http.Error(w, "not authorized yet", http.StatusConflict)
+			return
+		}
+
+		cfg := map[string]any{}
+		if err := json.Unmarshal([]byte(inst.Config), &cfg); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		cfg["access_token"] = token
+
+		var options []plugindata.DiscoveredOption
+		var discoverErr error
+		found, _ := registry.WithPlugin(inst.PluginID, func(p plugindata.DataPlugin) error {
+			discoverable, ok := p.(plugindata.Discoverable)
+			if !ok {
+				discoverErr = fmt.Errorf("plugin %q does not support discovery", inst.PluginID)
+				return nil
+			}
+			options, discoverErr = discoverable.Discover(r.Context(), field, cfg)
+			return nil
+		})
+		if !found {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if discoverErr != nil {
+			http.Error(w, discoverErr.Error(), http.StatusBadGateway)
+			return
+		}
+
+		resp := make([]discoveredOptionResponse, len(options))
+		for i, o := range options {
+			resp[i] = discoveredOptionResponse{Value: o.Value, Label: o.Label}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
 	}
 }
 
@@ -191,7 +251,7 @@ func handleOAuthCallback(sqldb *sql.DB, registry *plugindata.Registry, pending *
 // OAuth token without deleting the instance itself, so an admin can
 // revoke and re-authorize (e.g. after changing scopes or tenant)
 // without losing its name/config/schedule.
-func handleDeauthorizePluginInstance(sqldb *sql.DB) http.HandlerFunc {
+func handleDeauthorizePluginInstance(sqldb *sql.DB, sched *scheduler.Scheduler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		instanceID, err := strconv.Atoi(r.PathValue("id"))
 		if err != nil {
@@ -201,6 +261,9 @@ func handleDeauthorizePluginInstance(sqldb *sql.DB) http.HandlerFunc {
 		if err := db.DeleteOAuthToken(sqldb, instanceID); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
+		}
+		if err := sched.Reload(); err != nil {
+			log.Printf("instance %d deauthorized but scheduler reload failed: %v", instanceID, err)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}

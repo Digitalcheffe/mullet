@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Digitalcheffe/mullet/internal/db"
+	plugindata "github.com/Digitalcheffe/mullet/internal/plugins/data"
 )
 
 func TestListPlugins(t *testing.T) {
@@ -151,6 +152,39 @@ func TestCreatePluginInstanceRejectsInvalidSelectValue(t *testing.T) {
 	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/plugins/instances", body))
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("invalid select value: status = %d, want 400", rec.Code)
+	}
+}
+
+// TestValidateSetupFieldsAcceptsAnyValueForDynamicMultiSelect guards the
+// bug this fixed: a Dynamic field's manifest Options is always empty
+// (its real values come from Discover, at submit time, not anything
+// knowable up front) -- validating a submitted value against that empty
+// list rejected every legitimate discovered value, so no admin could
+// ever actually save a selection for one.
+func TestValidateSetupFieldsAcceptsAnyValueForDynamicMultiSelect(t *testing.T) {
+	manifest := plugindata.DataPluginManifest{
+		SetupFields: []plugindata.SetupField{
+			{Key: "calendars", Label: "Calendars", Type: "multi-select", Dynamic: true},
+		},
+	}
+	config := map[string]any{"calendars": []any{"cal-family", "cal-work"}}
+	if err := validateSetupFields(manifest, config); err != nil {
+		t.Errorf("validateSetupFields = %v, want nil for a Dynamic field's discovered values", err)
+	}
+}
+
+func TestValidateSetupFieldsStillRejectsBadValueForStaticMultiSelect(t *testing.T) {
+	manifest := plugindata.DataPluginManifest{
+		SetupFields: []plugindata.SetupField{
+			{
+				Key: "units", Label: "Units", Type: "multi-select",
+				Options: []plugindata.SelectOption{{Value: "metric", Label: "Metric"}},
+			},
+		},
+	}
+	config := map[string]any{"units": []any{"bogus"}}
+	if err := validateSetupFields(manifest, config); err == nil {
+		t.Error("validateSetupFields = nil, want an error for a non-Dynamic field's unlisted value")
 	}
 }
 

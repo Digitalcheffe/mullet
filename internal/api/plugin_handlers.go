@@ -28,6 +28,7 @@ type setupFieldResponse struct {
 	Placeholder string                 `json:"placeholder,omitempty"`
 	HelpText    string                 `json:"help_text,omitempty"`
 	Options     []selectOptionResponse `json:"options,omitempty"`
+	Dynamic     bool                   `json:"dynamic,omitempty"`
 }
 
 type pluginManifestResponse struct {
@@ -51,6 +52,7 @@ func toManifestResponse(m plugindata.DataPluginManifest) pluginManifestResponse 
 		fields[i] = setupFieldResponse{
 			Key: f.Key, Label: f.Label, Type: f.Type, Required: f.Required,
 			Default: f.Default, Placeholder: f.Placeholder, HelpText: f.HelpText, Options: options,
+			Dynamic: f.Dynamic,
 		}
 	}
 	return pluginManifestResponse{
@@ -368,7 +370,7 @@ func validateSetupFields(manifest plugindata.DataPluginManifest, config map[stri
 		switch field.Type {
 		case "select":
 			s, ok := val.(string)
-			if !ok || !isValidOption(field.Options, s) {
+			if !ok || (!field.Dynamic && !isValidOption(field.Options, s)) {
 				return fmt.Errorf("%s: invalid value", field.Label)
 			}
 		case "multi-select":
@@ -377,8 +379,15 @@ func validateSetupFields(manifest plugindata.DataPluginManifest, config map[stri
 				return fmt.Errorf("%s must be a list", field.Label)
 			}
 			for _, v := range arr {
+				// A Dynamic field's manifest Options is always empty --
+				// its legitimate values come from the plugin's own
+				// Discover at submit time, not anything the manifest
+				// (or this validator) can enumerate up front. Just
+				// require a plain string; the plugin itself is the one
+				// that'll reject a genuinely bogus ID when it next calls
+				// the provider with it.
 				s, ok := v.(string)
-				if !ok || !isValidOption(field.Options, s) {
+				if !ok || (!field.Dynamic && !isValidOption(field.Options, s)) {
 					return fmt.Errorf("%s: invalid value %v", field.Label, v)
 				}
 			}

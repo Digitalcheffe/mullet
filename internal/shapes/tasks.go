@@ -11,4 +11,14 @@ type Task struct {
 	Completed        bool    `db:"completed"`
 	DueDate          *string `db:"due_date"`
 	SortOrder        int     `db:"sort_order"`
+
+	// TaskListExternalID/TaskListName identify the source task list this
+	// task belongs to. A plugin has no DB access to resolve a real
+	// task_lists.id itself, so it sets these instead; the tasks writer
+	// (internal/db/store.go) upserts a task_lists row per distinct
+	// TaskListExternalID and fills in TaskListID before insert. Not
+	// stored on shape_tasks itself -- write-time only. Same pattern as
+	// CalendarEvent's CalendarExternalID/CalendarName.
+	TaskListExternalID string
+	TaskListName       string
 }

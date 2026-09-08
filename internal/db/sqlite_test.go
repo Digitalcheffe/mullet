@@ -25,6 +25,7 @@ func TestOpenAndMigrate(t *testing.T) {
 		"shape_weather_current", "shape_weather_forecast",
 		"shape_home_devices", "shape_packages",
 		"shape_infrastructure", "shape_media_status",
+		"themes", "displays", "screens", "cards",
 	}
 	for _, table := range tables {
 		var name string
@@ -53,8 +54,8 @@ func TestOpenAndMigrate(t *testing.T) {
 	if err := sqldb.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("counting schema_migrations: %v", err)
 	}
-	if count != 3 {
-		t.Errorf("schema_migrations has %d rows, want 3", count)
+	if count != 4 {
+		t.Errorf("schema_migrations has %d rows, want 4", count)
 	}
 }
 

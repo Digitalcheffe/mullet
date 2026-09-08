@@ -15,6 +15,12 @@ import (
 	"github.com/Digitalcheffe/mullet/internal/config"
 	"github.com/Digitalcheffe/mullet/internal/db"
 	plugindata "github.com/Digitalcheffe/mullet/internal/plugins/data"
+
+	// Compiled-in data plugins register themselves via init(). Adding a
+	// new plugin means implementing DataPlugin and blank-importing its
+	// package here.
+	_ "github.com/Digitalcheffe/mullet/internal/plugins/data/clock"
+
 	"github.com/Digitalcheffe/mullet/internal/scheduler"
 )
 
@@ -35,8 +41,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	registry := plugindata.NewRegistry()
-	sched := scheduler.New(sqldb, registry)
+	sched := scheduler.New(sqldb, plugindata.Default)
 	if err := sched.Start(ctx); err != nil {
 		log.Fatal(err)
 	}

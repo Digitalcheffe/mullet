@@ -29,6 +29,11 @@ func authedRequest(t *testing.T, method, path string, body []byte) *http.Request
 func TestDashboard(t *testing.T) {
 	router, sqldb := newTestRouter(t, nil)
 
+	// Migrations seed a clock plugin instance for a real deployment; clear
+	// it so the count below is deterministic.
+	if _, err := sqldb.Exec(`DELETE FROM data_plugin_instances`); err != nil {
+		t.Fatalf("clearing seeded plugin instances: %v", err)
+	}
 	if _, err := sqldb.Exec(
 		`INSERT INTO data_plugin_instances (plugin_id, instance_name, refresh_seconds) VALUES ('clock', 'Kitchen Clock', 60)`,
 	); err != nil {

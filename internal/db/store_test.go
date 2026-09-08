@@ -18,6 +18,11 @@ func newTestDB(t *testing.T) *sql.DB {
 	if err := Migrate(sqldb); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
+	// Migrations seed a clock plugin instance for a real deployment;
+	// tests want a clean, deterministic table to assign their own IDs in.
+	if _, err := sqldb.Exec(`DELETE FROM data_plugin_instances`); err != nil {
+		t.Fatalf("clearing seeded plugin instances: %v", err)
+	}
 	if _, err := sqldb.Exec(
 		`INSERT INTO data_plugin_instances (id, plugin_id, instance_name, refresh_seconds) VALUES (1, 'openweathermap', 'Home', 900)`,
 	); err != nil {

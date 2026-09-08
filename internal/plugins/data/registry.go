@@ -60,3 +60,19 @@ func (r *Registry) Get(id string) (DataPlugin, bool) {
 	p, ok := r.plugins[id]
 	return p, ok
 }
+
+// Default is the registry compiled-in plugins register themselves into
+// via init(), mirroring the database/sql driver pattern: a plugin
+// package's init() calls data.Register(New()), and main blank-imports
+// the package for that side effect. The server then uses Default rather
+// than constructing its own registry.
+var Default = NewRegistry()
+
+// Register adds p to Default.
+func Register(p DataPlugin) error { return Default.Register(p) }
+
+// List returns every plugin registered in Default.
+func List() []DataPlugin { return Default.List() }
+
+// Get returns the plugin registered under id in Default, if any.
+func Get(id string) (DataPlugin, bool) { return Default.Get(id) }

@@ -53,8 +53,8 @@ func TestOpenAndMigrate(t *testing.T) {
 	if err := sqldb.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("counting schema_migrations: %v", err)
 	}
-	if count != 2 {
-		t.Errorf("schema_migrations has %d rows, want 2", count)
+	if count != 3 {
+		t.Errorf("schema_migrations has %d rows, want 3", count)
 	}
 }
 
@@ -69,6 +69,9 @@ func TestShapeTablesCascadeDelete(t *testing.T) {
 
 	if err := Migrate(sqldb); err != nil {
 		t.Fatalf("Migrate: %v", err)
+	}
+	if _, err := sqldb.Exec(`DELETE FROM data_plugin_instances`); err != nil {
+		t.Fatalf("clearing seeded plugin instances: %v", err)
 	}
 
 	if _, err := sqldb.Exec(

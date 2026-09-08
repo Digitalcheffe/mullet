@@ -29,8 +29,7 @@ type dashboardResponse struct {
 }
 
 // handleDashboard reports the system overview shown on the admin
-// dashboard. display_count and active_client_count are hardcoded to 0
-// until the displays (#18) and clients (#29) tables exist.
+// dashboard.
 func handleDashboard(sqldb *sql.DB, info ServerInfo) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		statuses, err := db.ListPluginInstanceStatuses(sqldb)
@@ -58,12 +57,30 @@ func handleDashboard(sqldb *sql.DB, info ServerInfo) http.HandlerFunc {
 			})
 		}
 
+		displays, err := db.ListDisplays(sqldb)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		clients, err := db.ListClients(sqldb)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		activeClients := 0
+		for _, c := range clients {
+			if isClientOnline(c) {
+				activeClients++
+			}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(dashboardResponse{
 			UptimeSeconds:     int64(time.Since(info.StartedAt).Seconds()),
 			PluginCount:       len(statuses),
-			DisplayCount:      0,
-			ActiveClientCount: 0,
+			DisplayCount:      len(displays),
+			ActiveClientCount: activeClients,
 			SystemStatus:      systemStatus,
 			Plugins:           plugins,
 		})

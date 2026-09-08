@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -41,6 +42,28 @@ func isClientOnline(c db.Client) bool {
 	return c.Status == "approved" && c.LastSeenAt != nil && time.Since(*c.LastSeenAt) < clientOnlineThreshold
 }
 
+// clientIP reports the caller's address for a client-facing request --
+// shown to the admin alongside a pending client's pairing code so two
+// pending clients with the same generic name (two browser tabs both
+// registered as "Kitchen") can still be told apart before approving
+// one. Prefers X-Forwarded-For's first hop (the original client,
+// per the standard reverse-proxy convention) when set -- Mullet itself
+// never sets this header, so it's only present when a reverse proxy in
+// front of it adds one -- otherwise falls back to the direct TCP peer.
+func clientIP(r *http.Request) string {
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		if first, _, ok := strings.Cut(fwd, ","); ok {
+			return strings.TrimSpace(first)
+		}
+		return strings.TrimSpace(fwd)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
 // ---- Client-facing (public, no auth -- clients are admin-approved,
 // not authenticated) ----
 
@@ -62,13 +85,14 @@ type clientResponse struct {
 	OfflineMode string  `json:"offline_mode"`
 	Platform    *string `json:"platform,omitempty"`
 	AppVersion  *string `json:"app_version,omitempty"`
+	IPAddress   *string `json:"ip_address,omitempty"`
 }
 
 func toClientResponse(c db.Client) clientResponse {
 	resp := clientResponse{
 		ID: c.ID, ClientID: c.ClientID, Name: c.Name, DisplayID: c.DisplayID,
 		Status: c.Status, Online: isClientOnline(c), OfflineMode: c.OfflineMode,
-		Platform: c.Platform, AppVersion: c.AppVersion,
+		Platform: c.Platform, AppVersion: c.AppVersion, IPAddress: c.IPAddress,
 	}
 	if c.LastSeenAt != nil {
 		s := c.LastSeenAt.UTC().Format(time.RFC3339)
@@ -95,7 +119,7 @@ func handleRegisterClient(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		c, err := db.RegisterClient(sqldb, req.ClientID, req.Name, nullableString(req.Platform), nullableString(req.AppVersion))
+		c, err := db.RegisterClient(sqldb, req.ClientID, req.Name, nullableString(req.Platform), nullableString(req.AppVersion), nullableString(clientIP(r)))
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -135,7 +159,7 @@ func handleClientConfig(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if err := db.TouchClientLastSeen(sqldb, clientID); err != nil && !errors.Is(err, db.ErrNotFound) {
+		if err := db.TouchClientLastSeen(sqldb, clientID, clientIP(r)); err != nil && !errors.Is(err, db.ErrNotFound) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}

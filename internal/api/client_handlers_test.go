@@ -22,6 +22,48 @@ func registerTestClient(t *testing.T, router http.Handler, clientID string) clie
 	return c
 }
 
+func TestRegisterClientCapturesIPAddress(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	c := registerTestClient(t, router, "x7k-m2p")
+
+	// httptest.NewRequest defaults RemoteAddr to this when unset.
+	if c.IPAddress == nil || *c.IPAddress != "192.0.2.1" {
+		t.Errorf("IPAddress = %v, want 192.0.2.1 (httptest's default RemoteAddr, port stripped)", c.IPAddress)
+	}
+}
+
+func TestRegisterClientPrefersForwardedForOverRemoteAddr(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	body, _ := json.Marshal(clientRegisterRequest{ClientID: "x7k-m2p", Name: "Kitchen"})
+	req := httptest.NewRequest(http.MethodPost, "/api/clients/register", strings.NewReader(string(body)))
+	req.Header.Set("X-Forwarded-For", "203.0.113.7, 192.0.2.1")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var c clientResponse
+	json.Unmarshal(rec.Body.Bytes(), &c)
+	if c.IPAddress == nil || *c.IPAddress != "203.0.113.7" {
+		t.Errorf("IPAddress = %v, want the first X-Forwarded-For hop (203.0.113.7)", c.IPAddress)
+	}
+}
+
+func TestConfigPollRefreshesIPAddress(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	registerTestClient(t, router, "x7k-m2p")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/clients/x7k-m2p/config", nil)
+	req.Header.Set("X-Forwarded-For", "198.51.100.9")
+	router.ServeHTTP(httptest.NewRecorder(), req)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/clients", nil))
+	var list []clientResponse
+	json.Unmarshal(rec.Body.Bytes(), &list)
+	if len(list) != 1 || list[0].IPAddress == nil || *list[0].IPAddress != "198.51.100.9" {
+		t.Fatalf("got %+v, want one client with IPAddress refreshed to 198.51.100.9 by the config poll", list)
+	}
+}
+
 func TestRegisterClientDefaultsToPending(t *testing.T) {
 	router, _ := newTestRouter(t, nil)
 	c := registerTestClient(t, router, "x7k-m2p")

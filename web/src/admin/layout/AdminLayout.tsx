@@ -19,7 +19,7 @@ interface SoonItem {
 // Pages the sidebar shows for a sense of the whole app, but that don't
 // exist yet -- rendered disabled with a "Soon" badge rather than either
 // a dead link or being hidden entirely.
-const soonItems: SoonItem[] = [{ label: 'Clients', icon: ClientsIcon }];
+const soonItems: SoonItem[] = [];
 
 export default function AdminLayout({ username, onSignOut }: AdminLayoutProps) {
   return (
@@ -48,6 +48,11 @@ export default function AdminLayout({ username, onSignOut }: AdminLayoutProps) {
         <NavLink to="/admin/themes" className={navLinkClassName}>
           <ThemesIcon />
           Themes
+        </NavLink>
+
+        <NavLink to="/admin/clients" className={navLinkClassName}>
+          <ClientsIcon />
+          Clients
         </NavLink>
 
         {soonItems.map(({ label, icon: Icon }) => (

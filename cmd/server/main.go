@@ -10,6 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	// Embeds the IANA time zone database in the binary, so TZID lookups
+	// (e.g. the ICS feed plugin resolving VTIMEZONE) work even on a
+	// minimal runtime image with no /usr/share/zoneinfo (our Alpine
+	// Docker image doesn't install the tzdata package).
+	_ "time/tzdata"
+
 	"github.com/Digitalcheffe/mullet/internal/api"
 	"github.com/Digitalcheffe/mullet/internal/auth"
 	"github.com/Digitalcheffe/mullet/internal/config"
@@ -20,6 +26,7 @@ import (
 	// new plugin means implementing DataPlugin and blank-importing its
 	// package here.
 	_ "github.com/Digitalcheffe/mullet/internal/plugins/data/clock"
+	_ "github.com/Digitalcheffe/mullet/internal/plugins/data/icsfeed"
 	_ "github.com/Digitalcheffe/mullet/internal/plugins/data/openmeteo"
 	_ "github.com/Digitalcheffe/mullet/internal/plugins/data/openweathermap"
 

@@ -26,6 +26,7 @@ var shapeWriters = map[string]shapeWriter{
 	"packages":         writePackages,
 	"infrastructure":   writeInfrastructure,
 	"media_status":     writeMediaStatus,
+	"events":           writeEvents,
 }
 
 // WriteShape replaces all rows for pluginInstanceID in the table for
@@ -178,6 +179,107 @@ func writeInfrastructure(tx *sql.Tx, pluginInstanceID int, rows []any) error {
 			return fmt.Errorf("inserting shape_infrastructure row %q: %w", s.ID, err)
 		}
 	}
+	return nil
+}
+
+// writeEvents implements the events contract's Upsert write strategy
+// (see docs/architecture_1.md "Write Path"): rows arrive with a
+// plugin-assigned CalendarExternalID/Name/Color rather than a real
+// calendars.id, since a plugin has no DB access to resolve one itself.
+// For each distinct external ID, this upserts a calendars row (entity
+// discovery), then replaces that calendar's shape_events rows scoped
+// by (plugin_instance_id, calendar_id) -- so a plugin instance fetching
+// multiple calendars in one cycle never clobbers a calendar's data with
+// another's.
+//
+// Known limitation: a calendar only gets cleared/refreshed when at least
+// one of its rows shows up in this call, since an empty rows slice
+// carries no CalendarExternalID to act on. A calendar whose event count
+// drops to exactly zero (rather than just shrinking) keeps its last-known
+// events until its next non-empty fetch. Acceptable for now -- retention
+// /cleanup of stale rows is a separate, not-yet-built concern (see the
+// architecture doc's "Retention / Cleanup" section).
+func writeEvents(tx *sql.Tx, pluginInstanceID int, rows []any) error {
+	events := make([]shapes.CalendarEvent, len(rows))
+	for i, row := range rows {
+		e, ok := row.(shapes.CalendarEvent)
+		if !ok {
+			return fmt.Errorf("events writer: expected shapes.CalendarEvent, got %T", row)
+		}
+		if e.CalendarExternalID == "" {
+			return fmt.Errorf("events writer: event %q has no CalendarExternalID", e.ID)
+		}
+		events[i] = e
+	}
+
+	byCalendar := map[string][]shapes.CalendarEvent{}
+	var order []string
+	for _, e := range events {
+		if _, seen := byCalendar[e.CalendarExternalID]; !seen {
+			order = append(order, e.CalendarExternalID)
+		}
+		byCalendar[e.CalendarExternalID] = append(byCalendar[e.CalendarExternalID], e)
+	}
+
+	upsertCalendar, err := tx.Prepare(`
+		INSERT INTO calendars (plugin_instance_id, external_id, name, color)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(plugin_instance_id, external_id) DO UPDATE SET name = excluded.name, color = excluded.color
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing calendars upsert: %w", err)
+	}
+	defer upsertCalendar.Close()
+
+	selectCalendarID, err := tx.Prepare(`SELECT id FROM calendars WHERE plugin_instance_id = ? AND external_id = ?`)
+	if err != nil {
+		return fmt.Errorf("preparing calendars lookup: %w", err)
+	}
+	defer selectCalendarID.Close()
+
+	deleteEvents, err := tx.Prepare(`DELETE FROM shape_events WHERE plugin_instance_id = ? AND calendar_id = ?`)
+	if err != nil {
+		return fmt.Errorf("preparing shape_events delete: %w", err)
+	}
+	defer deleteEvents.Close()
+
+	insertEvent, err := tx.Prepare(`
+		INSERT INTO shape_events
+			(id, plugin_instance_id, calendar_id, title, start, end, all_day, location, description)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return fmt.Errorf("preparing shape_events insert: %w", err)
+	}
+	defer insertEvent.Close()
+
+	for _, externalID := range order {
+		calEvents := byCalendar[externalID]
+		name := calEvents[0].CalendarName
+		var color *string
+		if calEvents[0].CalendarColor != nil {
+			color = calEvents[0].CalendarColor
+		}
+		if _, err := upsertCalendar.Exec(pluginInstanceID, externalID, name, color); err != nil {
+			return fmt.Errorf("upserting calendar %q: %w", externalID, err)
+		}
+
+		var calendarID int
+		if err := selectCalendarID.QueryRow(pluginInstanceID, externalID).Scan(&calendarID); err != nil {
+			return fmt.Errorf("looking up calendar %q: %w", externalID, err)
+		}
+
+		if _, err := deleteEvents.Exec(pluginInstanceID, calendarID); err != nil {
+			return fmt.Errorf("clearing shape_events for calendar %q: %w", externalID, err)
+		}
+
+		for _, e := range calEvents {
+			if _, err := insertEvent.Exec(e.ID, pluginInstanceID, calendarID, e.Title, e.Start, e.End, e.AllDay, e.Location, e.Description); err != nil {
+				return fmt.Errorf("inserting shape_events row %q: %w", e.ID, err)
+			}
+		}
+	}
+
 	return nil
 }
 

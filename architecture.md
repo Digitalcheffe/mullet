@@ -482,7 +482,7 @@ Designer's own palette-drag placeholder cards were intentionally left
 as-is (#23 wired up the live display, not the editor's own preview; see
 [Divergence](#divergence-from-the-original-proposal)).
 
-### UI Plugins (Six built, rendered live on the display)
+### UI Plugins (Ten built, rendered live on the display)
 
 `web/src/plugins/` holds real UI plugin implementations, each in its own
 folder per `UIPlugin` (`web/src/shared/types/plugin.ts`): an `id`,
@@ -512,7 +512,7 @@ existing data plugin `id`s (`clock`, `openweathermap`, `open-meteo`,
 `ics-feed`, `msgraph-calendar`, `msgraph-todo`) are *not* retroactively
 renamed, since `id` is persisted in `data_plugin_instances.plugin_id`
 and a rename would break every already-configured instance in a real
-deployment. Six UI plugins exist:
+deployment. Ten UI plugins exist:
 
 - **`mullet-weather-current`**: temp, condition glyph, high/low, humidity,
   wind speed. Drops the secondary stats when `size` is small (`≤2` grid
@@ -546,8 +546,38 @@ deployment. Six UI plugins exist:
 - **`mullet-clock`** (#26): a live clock (`setInterval`, same pattern as
   the display's own `TopBar`), 12h/24h and show-date as config options.
   The one built-in UI plugin with `dataShape: ''`.
+- **`mullet-home-status`** (#28): `home_devices` grouped by `area`
+  (falling back to an "Other" group for a `null` area, e.g. a sensor
+  with no room assigned), each device showing an icon keyed by
+  `device_type` and a status dot -- green/yellow/red/neutral from a
+  small per-device-type judgment (`statusClass`: a lock's `locked` is
+  good, `unlocked` is bad; a door/garage's `closed` is good, `open` is
+  a yellow "worth noting"; a light's `on` is good; everything else,
+  including sensor readings and climate modes, is neutral rather than
+  guessing at a judgment the framework has no basis for making).
+- **`mullet-server-health`** (#28): `infrastructure` rows as a list,
+  each with a status dot (`up`/`online`/`healthy`/`running` good,
+  `down`/`offline`/`error`/`stopped`/`unhealthy` bad, anything else
+  yellow) and CPU/memory/disk bars -- bar color is a separate judgment
+  from the dot, keyed on the load percentage itself (`≥90` red, `≥70`
+  yellow, else green), since a service can report itself "healthy"
+  while still running hot.
+- **`mullet-media-now-playing`** (#28): `media_status`'s one
+  currently-playing player (`data.find(d => d.is_playing)`, falling
+  back to `data[0]` if none are, so an idle second player elsewhere
+  doesn't hide the one actually playing), album art (or a placeholder
+  glyph), title/artist, and a play/pause glyph.
+- **`mullet-package-tracker`** (#28): `packages` sorted by `eta`
+  (soonest first, no-ETA last), each with a progress bar derived from a
+  small recognized set of stage keywords (`ordered` →
+  `pre_transit` → `in_transit` → `out_for_delivery` → `delivered`) --
+  package-tracking data plugins don't share a status vocabulary, so an
+  unrecognized status still renders (carrier, description, ETA, the
+  status text itself) just without a bar. Hides `delivered` packages by
+  default (`showDelivered` config), since the point is what's still
+  incoming.
 
-All six render their **own** full card chrome from `theme` (background,
+All ten render their **own** full card chrome from `theme` (background,
 border, radius, blur, opacity, font) -- there's no separate wrapping
 `Card` component in this design, matching how the Designer's own
 placeholder cards already work. The two weather widgets key their icon

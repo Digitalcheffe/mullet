@@ -52,6 +52,7 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	adminMux.HandleFunc("POST /api/admin/plugins/instances", handleCreatePluginInstance(sqldb, registry, sched))
 	adminMux.HandleFunc("PUT /api/admin/plugins/instances/{id}", handleUpdatePluginInstance(sqldb, registry, sched))
 	adminMux.HandleFunc("DELETE /api/admin/plugins/instances/{id}", handleDeletePluginInstance(sqldb, sched))
+	adminMux.HandleFunc("POST /api/admin/plugins/instances/{id}/test", handleTestPluginInstance(sched))
 	mux.Handle("/api/admin/", requireAuth(jwtSecret, authDisabled)(adminMux))
 
 	// /api/data/* -- served to the display frontend directly from typed

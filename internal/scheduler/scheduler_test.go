@@ -234,3 +234,130 @@ func TestStartSkipsInstanceWhenConfigureFails(t *testing.T) {
 		t.Errorf("last_error = %v, want %q", lastError, "missing api_key")
 	}
 }
+
+// waitForCalls polls until plugin.calls reaches want, or fails the test
+// after timeout. Start/Reload launch fetch goroutines asynchronously, so
+// tests that assert on an "immediate" fetch must wait for it rather than
+// checking calls.Load() right after the call returns.
+func waitForCalls(t *testing.T, plugin *fakePlugin, want int32, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if plugin.calls.Load() >= want {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("plugin called %d times, want >= %d within %v", plugin.calls.Load(), want, timeout)
+}
+
+func TestReloadPicksUpNewlyAddedInstance(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	plugin := &fakePlugin{id: "openweathermap", interval: time.Hour}
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(plugin); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	s := New(sqldb, registry)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Stop()
+
+	if plugin.calls.Load() != 0 {
+		t.Fatalf("plugin called %d times before any instance existed, want 0", plugin.calls.Load())
+	}
+
+	// Simulate the admin API creating a new instance.
+	if _, err := sqldb.Exec(
+		`INSERT INTO data_plugin_instances (id, plugin_id, instance_name, refresh_seconds, config) VALUES (1, 'openweathermap', 'Home', 3600, '{}')`,
+	); err != nil {
+		t.Fatalf("inserting instance: %v", err)
+	}
+	if err := s.Reload(); err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+
+	waitForCalls(t, plugin, 1, time.Second)
+}
+
+func TestReloadStopsRemovedAndDisabledInstances(t *testing.T) {
+	sqldb := newTestDB(t)
+	if _, err := sqldb.Exec(
+		// refresh_seconds=0 falls back to the plugin's own RefreshInterval
+		// (10ms below), so this test doesn't take real wall-clock minutes.
+		`INSERT INTO data_plugin_instances (id, plugin_id, instance_name, refresh_seconds, config) VALUES (1, 'openweathermap', 'Home', 0, '{}')`,
+	); err != nil {
+		t.Fatalf("seeding instance: %v", err)
+	}
+
+	plugin := &fakePlugin{id: "openweathermap", interval: 10 * time.Millisecond}
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(plugin); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	s := New(sqldb, registry)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Stop()
+
+	waitForCalls(t, plugin, 2, time.Second)
+	callsBeforeDisable := plugin.calls.Load()
+
+	if _, err := sqldb.Exec(`UPDATE data_plugin_instances SET enabled = 0 WHERE id = 1`); err != nil {
+		t.Fatalf("disabling instance: %v", err)
+	}
+	if err := s.Reload(); err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+
+	time.Sleep(30 * time.Millisecond)
+	callsAfterDisable := plugin.calls.Load()
+	if callsAfterDisable != callsBeforeDisable {
+		t.Errorf("plugin called %d more times after being disabled, want 0", callsAfterDisable-callsBeforeDisable)
+	}
+}
+
+func TestReloadRestartsChangedInstanceImmediately(t *testing.T) {
+	sqldb := newTestDB(t)
+	if _, err := sqldb.Exec(
+		`INSERT INTO data_plugin_instances (id, plugin_id, instance_name, refresh_seconds, config) VALUES (1, 'openweathermap', 'Home', 3600, '{}')`,
+	); err != nil {
+		t.Fatalf("seeding instance: %v", err)
+	}
+
+	plugin := &fakePlugin{id: "openweathermap", interval: time.Hour}
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(plugin); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	s := New(sqldb, registry)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Stop()
+
+	waitForCalls(t, plugin, 1, time.Second)
+
+	// Simulate the admin API editing the instance's config. With a
+	// 1-hour interval, only an immediate re-fetch on Reload proves the
+	// change took effect without a restart.
+	if _, err := sqldb.Exec(
+		`UPDATE data_plugin_instances SET config = '{"location":"changed"}' WHERE id = 1`,
+	); err != nil {
+		t.Fatalf("updating instance config: %v", err)
+	}
+	if err := s.Reload(); err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+
+	waitForCalls(t, plugin, 2, time.Second)
+	if plugin.lastConfig["location"] != "changed" {
+		t.Errorf("lastConfig = %v, want location=changed", plugin.lastConfig)
+	}
+}

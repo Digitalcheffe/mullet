@@ -1,13 +1,6 @@
 import type { ComponentType, SVGProps } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import {
-  ClientsIcon,
-  DashboardIcon,
-  DisplaysIcon,
-  PluginsIcon,
-  SettingsIcon,
-  ThemesIcon,
-} from './icons';
+import { ClientsIcon, DashboardIcon, DisplaysIcon, PluginsIcon, SettingsIcon, ThemesIcon } from './icons';
 import './AdminLayout.css';
 
 interface AdminLayoutProps {
@@ -27,7 +20,6 @@ interface SoonItem {
 // exist yet -- rendered disabled with a "Soon" badge rather than either
 // a dead link or being hidden entirely.
 const soonItems: SoonItem[] = [
-  { label: 'Data Plugins', icon: PluginsIcon },
   { label: 'Displays', icon: DisplaysIcon },
   { label: 'Themes', icon: ThemesIcon },
   { label: 'Clients', icon: ClientsIcon },
@@ -45,6 +37,11 @@ export default function AdminLayout({ username, onSignOut }: AdminLayoutProps) {
         <NavLink to="/admin" end className={navLinkClassName}>
           <DashboardIcon />
           Dashboard
+        </NavLink>
+
+        <NavLink to="/admin/plugins" className={navLinkClassName}>
+          <PluginsIcon />
+          Data Plugins
         </NavLink>
 
         {soonItems.map(({ label, icon: Icon }) => (

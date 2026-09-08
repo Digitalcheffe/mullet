@@ -6,6 +6,9 @@ import (
 	"database/sql"
 	"net/http"
 	"time"
+
+	plugindata "github.com/Digitalcheffe/mullet/internal/plugins/data"
+	"github.com/Digitalcheffe/mullet/internal/scheduler"
 )
 
 // ServerInfo carries server bootstrap facts the admin API reports but
@@ -23,16 +26,18 @@ type ServerInfo struct {
 // staticDir is the built frontend (web/dist) served for /admin, /display,
 // and everything else not matched below. authDisabled skips setup/login
 // and lets every /api/admin/* request through unauthenticated -- local
-// dev only, never set this in a real deployment.
-func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info ServerInfo, staticDir string, authDisabled bool) http.Handler {
+// dev only, never set this in a real deployment. registry and sched back
+// the plugin management endpoints: sched.Reload() is called after any
+// instance create/update/delete so changes take effect without a
+// restart.
+func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info ServerInfo, staticDir string, authDisabled bool, registry *plugindata.Registry, sched *scheduler.Scheduler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 
 	// /api/admin/* -- login and first-run setup are public; everything
 	// else requires a valid JWT (unless authDisabled). Real admin
-	// endpoints (users, plugins, displays, ...) are added in later
-	// issues; handleWhoAmI exercises the auth guard end-to-end in the
-	// meantime.
+	// endpoints (users, displays, ...) are added in later issues;
+	// handleWhoAmI exercises the auth guard end-to-end in the meantime.
 	mux.HandleFunc("POST /api/admin/login", handleLogin(sqldb, jwtSecret))
 	mux.HandleFunc("GET /api/admin/setup", handleSetupStatus(sqldb, authDisabled))
 	mux.HandleFunc("POST /api/admin/setup", handleSetup(sqldb, jwtSecret))
@@ -42,6 +47,11 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	adminMux.HandleFunc("GET /api/admin/dashboard", handleDashboard(sqldb, info))
 	adminMux.HandleFunc("GET /api/admin/settings", handleGetSettings(sqldb, info))
 	adminMux.HandleFunc("PUT /api/admin/settings", handlePutSettings(sqldb))
+	adminMux.HandleFunc("GET /api/admin/plugins", handleListPlugins(registry))
+	adminMux.HandleFunc("GET /api/admin/plugins/instances", handleListPluginInstances(sqldb))
+	adminMux.HandleFunc("POST /api/admin/plugins/instances", handleCreatePluginInstance(sqldb, registry, sched))
+	adminMux.HandleFunc("PUT /api/admin/plugins/instances/{id}", handleUpdatePluginInstance(sqldb, registry, sched))
+	adminMux.HandleFunc("DELETE /api/admin/plugins/instances/{id}", handleDeletePluginInstance(sqldb, sched))
 	mux.Handle("/api/admin/", requireAuth(jwtSecret, authDisabled)(adminMux))
 
 	// /api/data/* -- served to the display frontend from typed shape

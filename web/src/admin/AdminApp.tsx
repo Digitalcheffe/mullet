@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './auth/AuthContext';
 import AdminLayout from './layout/AdminLayout';
 import Dashboard from './pages/Dashboard';
 import LoginPage from './pages/LoginPage';
+import PluginsPage from './pages/PluginsPage';
 import SettingsPage from './pages/SettingsPage';
 import SetupWizard from './pages/SetupWizard';
 
@@ -52,6 +53,7 @@ function AdminShell() {
     <Routes>
       <Route element={<AdminLayout username={status.auth_disabled ? 'dev' : username!} onSignOut={logout} />}>
         <Route index element={<Dashboard />} />
+        <Route path="plugins" element={<PluginsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

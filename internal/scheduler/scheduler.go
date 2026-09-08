@@ -17,14 +17,19 @@ import (
 )
 
 // Scheduler runs registered data plugins for every enabled plugin
-// instance, on the interval configured for that instance.
+// instance, on the interval configured for that instance. Per the
+// architecture ("enabling/configuring a plugin is hot"), Reload can be
+// called any time after Start to pick up instances added, edited,
+// enabled/disabled, or removed via the admin API -- no restart needed.
 type Scheduler struct {
 	db       *sql.DB
 	registry *plugindata.Registry
 
-	mu     sync.Mutex
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	mu      sync.Mutex
+	ctx     context.Context
+	cancel  context.CancelFunc
+	running map[int]context.CancelFunc // instance ID -> stop just that instance
+	wg      sync.WaitGroup
 }
 
 // New returns a Scheduler that reads plugin instances from sqldb and
@@ -39,17 +44,51 @@ func New(sqldb *sql.DB, registry *plugindata.Registry) *Scheduler {
 // running until ctx is cancelled or Stop is called.
 func (s *Scheduler) Start(ctx context.Context) error {
 	s.mu.Lock()
-	runCtx, cancel := context.WithCancel(ctx)
-	s.cancel = cancel
+	s.ctx, s.cancel = context.WithCancel(ctx)
+	s.running = make(map[int]context.CancelFunc)
 	s.mu.Unlock()
 
+	return s.Reload()
+}
+
+// Reload re-reads enabled plugin instances from the database and
+// reconciles running goroutines against them: instances that are gone or
+// disabled are stopped, and every enabled instance is (re)started so a
+// config or interval change takes effect immediately. Safe to call
+// concurrently with itself and with the running fetch loops.
+func (s *Scheduler) Reload() error {
 	instances, err := db.LoadEnabledPluginInstances(s.db)
 	if err != nil {
-		cancel()
 		return err
 	}
 
+	wanted := make(map[int]db.PluginInstance, len(instances))
 	for _, inst := range instances {
+		wanted[inst.ID] = inst
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Stop anything no longer enabled/present.
+	for id, cancel := range s.running {
+		if _, ok := wanted[id]; !ok {
+			cancel()
+			delete(s.running, id)
+		}
+	}
+
+	// (Re)start every wanted instance. Always restarting -- rather than
+	// diffing what actually changed -- keeps this simple and correct at
+	// the cost of an extra immediate fetch for instances that were
+	// already running unchanged; fine at the scale of a handful of
+	// plugin instances.
+	for _, inst := range instances {
+		if cancel, ok := s.running[inst.ID]; ok {
+			cancel()
+			delete(s.running, inst.ID)
+		}
+
 		plugin, ok := s.registry.Get(inst.PluginID)
 		if !ok {
 			log.Printf("scheduler: no registered plugin for instance %d (plugin_id=%q), skipping", inst.ID, inst.PluginID)
@@ -75,23 +114,14 @@ func (s *Scheduler) Start(ctx context.Context) error {
 			interval = plugin.RefreshInterval()
 		}
 
+		instCtx, instCancel := context.WithCancel(s.ctx)
+		s.running[inst.ID] = instCancel
+
 		s.wg.Add(1)
-		go s.run(runCtx, inst, plugin, interval)
+		go s.run(instCtx, inst, plugin, interval)
 	}
 
 	return nil
-}
-
-// configurePlugin parses rawConfig (a JSON object, or "" for none) and
-// applies it to plugin.
-func configurePlugin(plugin plugindata.DataPlugin, rawConfig string) error {
-	cfg := map[string]any{}
-	if rawConfig != "" {
-		if err := json.Unmarshal([]byte(rawConfig), &cfg); err != nil {
-			return fmt.Errorf("parsing config: %w", err)
-		}
-	}
-	return plugin.Configure(cfg)
 }
 
 // Stop cancels every running plugin loop and waits for them to exit.
@@ -104,6 +134,18 @@ func (s *Scheduler) Stop() {
 		cancel()
 	}
 	s.wg.Wait()
+}
+
+// configurePlugin parses rawConfig (a JSON object, or "" for none) and
+// applies it to plugin.
+func configurePlugin(plugin plugindata.DataPlugin, rawConfig string) error {
+	cfg := map[string]any{}
+	if rawConfig != "" {
+		if err := json.Unmarshal([]byte(rawConfig), &cfg); err != nil {
+			return fmt.Errorf("parsing config: %w", err)
+		}
+	}
+	return plugin.Configure(cfg)
 }
 
 func (s *Scheduler) run(ctx context.Context, inst db.PluginInstance, plugin plugindata.DataPlugin, interval time.Duration) {

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -12,6 +13,10 @@ import (
 
 	"github.com/Digitalcheffe/mullet/internal/auth"
 	"github.com/Digitalcheffe/mullet/internal/db"
+	plugindata "github.com/Digitalcheffe/mullet/internal/plugins/data"
+	clockplugin "github.com/Digitalcheffe/mullet/internal/plugins/data/clock"
+	owmplugin "github.com/Digitalcheffe/mullet/internal/plugins/data/openweathermap"
+	"github.com/Digitalcheffe/mullet/internal/scheduler"
 )
 
 const testJWTSecret = "test-secret"
@@ -47,10 +52,35 @@ func newTestUserDB(t *testing.T) *sql.DB {
 	return sqldb
 }
 
+// newTestSchedulerDeps returns a registry seeded with two real plugins --
+// clock (no setup fields, for the simple paths) and openweathermap (has
+// required setup fields, for manifest-validation tests) -- plus a started
+// scheduler bound to sqldb. Both are suitable for passing into NewRouter.
+func newTestSchedulerDeps(t *testing.T, sqldb *sql.DB) (*plugindata.Registry, *scheduler.Scheduler) {
+	t.Helper()
+
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(clockplugin.New()); err != nil {
+		t.Fatalf("registering clock plugin: %v", err)
+	}
+	if err := registry.Register(owmplugin.New()); err != nil {
+		t.Fatalf("registering openweathermap plugin: %v", err)
+	}
+
+	sched := scheduler.New(sqldb, registry)
+	if err := sched.Start(context.Background()); err != nil {
+		t.Fatalf("starting scheduler: %v", err)
+	}
+	t.Cleanup(sched.Stop)
+
+	return registry, sched
+}
+
 func newTestRouter(t *testing.T, corsOrigins []string) (http.Handler, *sql.DB) {
 	t.Helper()
 	sqldb := newTestUserDB(t)
-	router := NewRouter(sqldb, []byte(testJWTSecret), corsOrigins, testServerInfo(), t.TempDir(), false)
+	registry, sched := newTestSchedulerDeps(t, sqldb)
+	router := NewRouter(sqldb, []byte(testJWTSecret), corsOrigins, testServerInfo(), t.TempDir(), false, registry, sched)
 	return router, sqldb
 }
 

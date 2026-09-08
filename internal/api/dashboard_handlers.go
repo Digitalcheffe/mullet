@@ -42,15 +42,9 @@ func handleDashboard(sqldb *sql.DB, info ServerInfo) http.HandlerFunc {
 		plugins := make([]pluginStatusResponse, 0, len(statuses))
 		systemStatus := "normal"
 		for _, s := range statuses {
-			status := "pending"
-			switch {
-			case !s.Enabled:
-				status = "disabled"
-			case s.LastError != nil:
-				status = "retrying"
+			status := pluginStatus(s)
+			if status == "retrying" {
 				systemStatus = "attention"
-			case s.LastFetchAt != nil:
-				status = "synced"
 			}
 
 			plugins = append(plugins, pluginStatusResponse{
@@ -73,6 +67,23 @@ func handleDashboard(sqldb *sql.DB, info ServerInfo) http.HandlerFunc {
 			SystemStatus:      systemStatus,
 			Plugins:           plugins,
 		})
+	}
+}
+
+// pluginStatus derives a display-ready status string ("synced" |
+// "retrying" | "pending" | "disabled") from a plugin instance's fetch
+// state. Shared by the dashboard's Plugin Status panel and the plugin
+// management page's instance list.
+func pluginStatus(s db.PluginInstanceStatus) string {
+	switch {
+	case !s.Enabled:
+		return "disabled"
+	case s.LastError != nil:
+		return "retrying"
+	case s.LastFetchAt != nil:
+		return "synced"
+	default:
+		return "pending"
 	}
 }
 

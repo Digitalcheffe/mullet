@@ -1,0 +1,49 @@
+.manifest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field-help {
+  font: 500 11.5px var(--font-body);
+  color: var(--ink-soft);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 600 13px var(--font-body);
+  color: var(--ink);
+}
+
+.manifest-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.btn-secondary {
+  font: 700 13px var(--font-body);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 9px 16px;
+  border-radius: var(--radius-md);
+}
+.btn-secondary:hover {
+  background: var(--surface-alt);
+}
+
+.btn-danger {
+  font: 700 12px var(--font-body);
+  color: var(--error);
+  background: var(--surface);
+  border: 1px solid var(--error-bg);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+}
+.btn-danger:hover {
+  background: var(--error-bg);
+}

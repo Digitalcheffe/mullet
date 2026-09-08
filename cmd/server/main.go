@@ -62,7 +62,7 @@ func main() {
 		Port:      cfg.Port,
 		DBPath:    cfg.DBPath,
 		StartedAt: startedAt,
-	}, cfg.StaticDir, cfg.AuthDisabled)
+	}, cfg.StaticDir, cfg.AuthDisabled, plugindata.Default, sched)
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: router}
 
 	go func() {

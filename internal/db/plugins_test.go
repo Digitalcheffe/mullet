@@ -75,6 +75,66 @@ func TestListPluginInstanceStatuses(t *testing.T) {
 	}
 }
 
+func TestCreateGetUpdateDeletePluginInstance(t *testing.T) {
+	sqldb := newTestDB(t) // seeds instance id=1
+
+	id, err := CreatePluginInstance(sqldb, "open-meteo", "Backyard", 900, true, `{"location":"Seattle"}`)
+	if err != nil {
+		t.Fatalf("CreatePluginInstance: %v", err)
+	}
+	if id == 0 {
+		t.Fatal("CreatePluginInstance returned id 0")
+	}
+
+	got, err := GetPluginInstance(sqldb, id)
+	if err != nil {
+		t.Fatalf("GetPluginInstance: %v", err)
+	}
+	if got.PluginID != "open-meteo" || got.InstanceName != "Backyard" || got.Config != `{"location":"Seattle"}` {
+		t.Errorf("created instance = %+v, unexpected values", got)
+	}
+	if got.RefreshInterval != 900*time.Second || !got.Enabled {
+		t.Errorf("created instance = %+v, want RefreshInterval=900s Enabled=true", got)
+	}
+
+	if err := UpdatePluginInstance(sqldb, id, "Front Yard", 1800, false, `{"location":"Portland"}`); err != nil {
+		t.Fatalf("UpdatePluginInstance: %v", err)
+	}
+	got, err = GetPluginInstance(sqldb, id)
+	if err != nil {
+		t.Fatalf("GetPluginInstance after update: %v", err)
+	}
+	if got.InstanceName != "Front Yard" || got.Enabled || got.RefreshInterval != 1800*time.Second || got.Config != `{"location":"Portland"}` {
+		t.Errorf("updated instance = %+v, unexpected values", got)
+	}
+
+	if err := DeletePluginInstance(sqldb, id); err != nil {
+		t.Fatalf("DeletePluginInstance: %v", err)
+	}
+	if _, err := GetPluginInstance(sqldb, id); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetPluginInstance after delete = %v, want ErrNotFound", err)
+	}
+}
+
+func TestUpdateDeleteMissingInstanceReturnsErrNotFound(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	if err := UpdatePluginInstance(sqldb, 9999, "X", 60, true, "{}"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("UpdatePluginInstance on missing id = %v, want ErrNotFound", err)
+	}
+	if err := DeletePluginInstance(sqldb, 9999); !errors.Is(err, ErrNotFound) {
+		t.Errorf("DeletePluginInstance on missing id = %v, want ErrNotFound", err)
+	}
+}
+
+func TestGetPluginInstanceMissingReturnsErrNotFound(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	if _, err := GetPluginInstance(sqldb, 9999); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetPluginInstance on missing id = %v, want ErrNotFound", err)
+	}
+}
+
 func TestRecordFetchSuccessAndError(t *testing.T) {
 	sqldb := newTestDB(t)
 

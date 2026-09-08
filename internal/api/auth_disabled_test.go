@@ -10,7 +10,8 @@ import (
 func newAuthDisabledTestRouter(t *testing.T) http.Handler {
 	t.Helper()
 	sqldb := newTestUserDB(t)
-	return NewRouter(sqldb, []byte(testJWTSecret), nil, testServerInfo(), t.TempDir(), true)
+	registry, sched := newTestSchedulerDeps(t, sqldb)
+	return NewRouter(sqldb, []byte(testJWTSecret), nil, testServerInfo(), t.TempDir(), true, registry, sched)
 }
 
 func TestAuthDisabledSetupStatusReportsNotRequired(t *testing.T) {

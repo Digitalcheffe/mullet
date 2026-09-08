@@ -13,10 +13,30 @@ interface Props {
 // react-grid-layout uses for editing, so a card that fits without
 // overlap in the Designer fits identically here (grid lines are
 // 1-indexed, hence the `+1`s in DisplayCard).
+//
+// Rows use `1fr` sizing (via an explicit `grid-template-rows`, one `fr`
+// per row actually used), the same way columns already do -- not the
+// screen's stored `row_height` in raw pixels (issue #31). A fixed pixel
+// row height was tuned for whatever resolution the admin happened to
+// be designing in; opened on a different aspect ratio (a portrait
+// tablet, an ultrawide) it either overflows past the bottom of the
+// viewport (clipped, since the display route hides overflow) or leaves
+// dead space, depending on which way the mismatch goes. `1fr` rows
+// scale the whole grid to fill exactly the container's actual height
+// on any screen shape, with no overflow and no gap, matching how the
+// width axis already behaves.
+function rowCount(screen: ScreenLayout): number {
+  let max = 1;
+  for (const card of screen.cards) {
+    max = Math.max(max, card.y + card.h);
+  }
+  return max;
+}
+
 export default function ScreenGrid({ screen, theme }: Props) {
   const style = {
     gridTemplateColumns: `repeat(${screen.columns}, 1fr)`,
-    gridAutoRows: `${screen.row_height}px`,
+    gridTemplateRows: `repeat(${rowCount(screen)}, 1fr)`,
     gap: `${screen.gap}px`,
   };
 

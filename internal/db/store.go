@@ -57,8 +57,8 @@ func writeWeatherCurrent(tx *sql.Tx, pluginInstanceID int, rows []any) error {
 
 	stmt, err := tx.Prepare(`
 		INSERT INTO shape_weather_current
-			(id, plugin_instance_id, temp, feels_like, condition, icon, humidity, high, low, sunrise, sunset, wind_speed)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(id, plugin_instance_id, temp, feels_like, condition, icon, humidity, high, low, sunrise, sunset, wind_speed, alert)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return fmt.Errorf("preparing shape_weather_current insert: %w", err)
@@ -70,7 +70,7 @@ func writeWeatherCurrent(tx *sql.Tx, pluginInstanceID int, rows []any) error {
 		if !ok {
 			return fmt.Errorf("weather_current writer: expected shapes.WeatherCurrent, got %T", row)
 		}
-		if _, err := stmt.Exec(w.ID, pluginInstanceID, w.Temp, w.FeelsLike, w.Condition, w.Icon, w.Humidity, w.High, w.Low, w.Sunrise, w.Sunset, w.WindSpeed); err != nil {
+		if _, err := stmt.Exec(w.ID, pluginInstanceID, w.Temp, w.FeelsLike, w.Condition, w.Icon, w.Humidity, w.High, w.Low, w.Sunrise, w.Sunset, w.WindSpeed, w.Alert); err != nil {
 			return fmt.Errorf("inserting shape_weather_current row %q: %w", w.ID, err)
 		}
 	}

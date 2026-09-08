@@ -55,8 +55,8 @@ func TestOpenAndMigrate(t *testing.T) {
 	if err := sqldb.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("counting schema_migrations: %v", err)
 	}
-	if count != 11 {
-		t.Errorf("schema_migrations has %d rows, want 11", count)
+	if count != 13 {
+		t.Errorf("schema_migrations has %d rows, want 13", count)
 	}
 }
 
@@ -77,8 +77,8 @@ func TestMigrateSeedsDefaultTheme(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListThemes: %v", err)
 	}
-	if len(themes) != 1 {
-		t.Fatalf("themes = %+v, want 1 seeded theme", themes)
+	if len(themes) != 4 {
+		t.Fatalf("themes = %+v, want 4 bundled themes (issue #31)", themes)
 	}
 	if themes[0].Name != "Dark Glass" || !themes[0].IsDefault {
 		t.Errorf("seeded theme = %+v, want (name=Dark Glass, is_default=true)", themes[0])

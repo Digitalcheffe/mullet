@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface ShapeResponse {
   data: Record<string, unknown>[];
@@ -20,6 +20,16 @@ const DATA_POLL_MS = 60 * 1000;
 // transient network hiccup.
 export function useShapeData(shape: string, pluginInstanceID: number | null) {
   const [data, setData] = useState<Record<string, unknown>[]>([]);
+  // Every card reading a given shape re-renders on every poll otherwise
+  // -- most polls return byte-identical data (a clock's rows never
+  // change; weather barely does), but `setData` always handed back a
+  // fresh array reference, so every consumer re-rendered anyway despite
+  // nothing actually changing. On kiosk hardware (issue #31's Pi
+  // performance tuning) that's real, avoidable work every 60s across
+  // every card on screen. Comparing serialized content before calling
+  // setState keeps the array reference (and every consumer's render)
+  // stable across a no-op poll.
+  const lastJSON = useRef<string>('');
 
   useEffect(() => {
     // A widget with no data needs at all (the clock) declares
@@ -34,7 +44,12 @@ export function useShapeData(shape: string, pluginInstanceID: number | null) {
         const res = await fetch(`/api/data/${encodeURIComponent(shape)}${qs}`);
         if (!res.ok) return;
         const body: ShapeResponse = await res.json();
-        if (!cancelled) setData(body.data ?? []);
+        if (cancelled) return;
+        const rows = body.data ?? [];
+        const json = JSON.stringify(rows);
+        if (json === lastJSON.current) return;
+        lastJSON.current = json;
+        setData(rows);
       } catch {
         // Keep the last-known data; the display-wide reconnecting
         // overlay (driven by the layout fetch, not this one) already

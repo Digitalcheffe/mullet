@@ -19,4 +19,14 @@ type CalendarEvent struct {
 	AllDay           bool       `db:"all_day"`
 	Location         *string    `db:"location"`
 	Description      *string    `db:"description"`
+
+	// CalendarExternalID/CalendarName/CalendarColor identify the source
+	// calendar this event belongs to. A plugin has no DB access to
+	// resolve a real calendars.id itself, so it sets these instead;
+	// the events writer (internal/db/store.go) upserts a calendars row
+	// per distinct CalendarExternalID and fills in CalendarID before
+	// insert. Not stored on shape_events itself -- write-time only.
+	CalendarExternalID string
+	CalendarName       string
+	CalendarColor      *string
 }

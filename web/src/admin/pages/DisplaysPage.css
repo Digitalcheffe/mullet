@@ -1,0 +1,105 @@
+.displays-page {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  max-width: 820px;
+}
+
+.displays-page h1 {
+  font: 700 24px var(--font-heading);
+}
+
+.displays-page section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.displays-page h2 {
+  font: 700 15px var(--font-heading);
+}
+
+.empty-state {
+  font: 500 12.5px var(--font-body);
+  color: var(--ink-soft);
+  padding: 14px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
+.display-list,
+.screen-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.display-row,
+.screen-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-alt);
+}
+
+.display-row.selected {
+  border-color: var(--accent);
+}
+
+.display-info,
+.screen-info {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.screen-info {
+  cursor: default;
+}
+
+.display-name,
+.screen-name {
+  font: 700 13.5px var(--font-body);
+  color: var(--ink);
+}
+
+.display-detail,
+.screen-detail {
+  font: 500 11.5px var(--font-body);
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.screen-order {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.btn-mini {
+  font: 700 10px var(--font-body);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  width: 22px;
+  height: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.btn-mini:hover:not(:disabled) {
+  background: var(--surface-alt);
+}
+.btn-mini:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

@@ -5,6 +5,7 @@ import './forms.css';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import AdminLayout from './layout/AdminLayout';
 import Dashboard from './pages/Dashboard';
+import DisplaysPage from './pages/DisplaysPage';
 import LoginPage from './pages/LoginPage';
 import PluginsPage from './pages/PluginsPage';
 import SettingsPage from './pages/SettingsPage';
@@ -54,6 +55,7 @@ function AdminShell() {
       <Route element={<AdminLayout username={status.auth_disabled ? 'dev' : username!} onSignOut={logout} />}>
         <Route index element={<Dashboard />} />
         <Route path="plugins" element={<PluginsPage />} />
+        <Route path="displays" element={<DisplaysPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

@@ -187,6 +187,8 @@ type displayRequest struct {
 	Slug            string `json:"slug"`
 	ThemeID         *int   `json:"theme_id"`
 	RotationSeconds int    `json:"rotation_seconds"`
+	ShowTopBar      bool   `json:"show_top_bar"`
+	ShowBottomBar   bool   `json:"show_bottom_bar"`
 }
 
 type displayResponse struct {
@@ -195,10 +197,15 @@ type displayResponse struct {
 	Slug            string `json:"slug"`
 	ThemeID         *int   `json:"theme_id,omitempty"`
 	RotationSeconds int    `json:"rotation_seconds"`
+	ShowTopBar      bool   `json:"show_top_bar"`
+	ShowBottomBar   bool   `json:"show_bottom_bar"`
 }
 
 func toDisplayResponse(d db.Display) displayResponse {
-	return displayResponse{ID: d.ID, Name: d.Name, Slug: d.Slug, ThemeID: d.ThemeID, RotationSeconds: d.RotationSeconds}
+	return displayResponse{
+		ID: d.ID, Name: d.Name, Slug: d.Slug, ThemeID: d.ThemeID, RotationSeconds: d.RotationSeconds,
+		ShowTopBar: d.ShowTopBar, ShowBottomBar: d.ShowBottomBar,
+	}
 }
 
 func handleListDisplays(sqldb *sql.DB) http.HandlerFunc {
@@ -233,7 +240,7 @@ func handleCreateDisplay(sqldb *sql.DB) http.HandlerFunc {
 			rotation = 30
 		}
 
-		id, err := db.CreateDisplay(sqldb, req.Name, req.Slug, req.ThemeID, rotation)
+		id, err := db.CreateDisplay(sqldb, req.Name, req.Slug, req.ThemeID, rotation, req.ShowTopBar, req.ShowBottomBar)
 		switch {
 		case errors.Is(err, db.ErrInUse):
 			inUseError(w, "")
@@ -268,7 +275,7 @@ func handleUpdateDisplay(sqldb *sql.DB) http.HandlerFunc {
 			rotation = 30
 		}
 
-		switch err := db.UpdateDisplay(sqldb, id, req.Name, req.Slug, req.ThemeID, rotation); {
+		switch err := db.UpdateDisplay(sqldb, id, req.Name, req.Slug, req.ThemeID, rotation, req.ShowTopBar, req.ShowBottomBar); {
 		case errors.Is(err, db.ErrNotFound):
 			http.Error(w, "not found", http.StatusNotFound)
 			return

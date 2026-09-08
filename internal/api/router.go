@@ -54,9 +54,10 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	adminMux.HandleFunc("DELETE /api/admin/plugins/instances/{id}", handleDeletePluginInstance(sqldb, sched))
 	mux.Handle("/api/admin/", requireAuth(jwtSecret, authDisabled)(adminMux))
 
-	// /api/data/* -- served to the display frontend from typed shape
-	// tables. Handlers land in issue #14.
+	// /api/data/* -- served to the display frontend directly from typed
+	// shape tables, no auth (LAN-facing, like the display itself).
 	dataMux := http.NewServeMux()
+	dataMux.HandleFunc("GET /api/data/{shape}", handleGetShapeData(sqldb))
 	mux.Handle("/api/data/", dataMux)
 
 	// /api/clients/* -- dedicated client app registration/polling, no

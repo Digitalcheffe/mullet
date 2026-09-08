@@ -84,6 +84,14 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	adminMux.HandleFunc("PUT /api/admin/cards/{id}", handleUpdateCard(sqldb))
 	adminMux.HandleFunc("DELETE /api/admin/cards/{id}", handleDeleteCard(sqldb))
 
+	adminMux.HandleFunc("GET /api/admin/displays/{id}/offline-screen", handleGetDisplayOfflineScreen(sqldb))
+	adminMux.HandleFunc("PUT /api/admin/displays/{id}/offline-screen", handleSetDisplayOfflineScreen(sqldb))
+
+	adminMux.HandleFunc("GET /api/admin/clients", handleListClients(sqldb))
+	adminMux.HandleFunc("PUT /api/admin/clients/{id}/approve", handleApproveClient(sqldb))
+	adminMux.HandleFunc("PUT /api/admin/clients/{id}", handleUpdateClient(sqldb))
+	adminMux.HandleFunc("DELETE /api/admin/clients/{id}", handleDeleteClient(sqldb))
+
 	mux.Handle("/api/admin/", requireAuth(jwtSecret, authDisabled)(adminMux))
 
 	// /api/data/* -- served to the display frontend directly from typed
@@ -107,8 +115,12 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	mux.HandleFunc("GET /api/oauth/callback", handleOAuthCallback(sqldb, registry, pending, sched))
 
 	// /api/clients/* -- dedicated client app registration/polling, no
-	// auth (clients are admin-approved). Handlers land in issue #29.
+	// auth (clients are admin-approved, not authenticated -- see
+	// architecture.md's Client Connection Model).
 	clientsMux := http.NewServeMux()
+	clientsMux.HandleFunc("POST /api/clients/register", handleRegisterClient(sqldb))
+	clientsMux.HandleFunc("GET /api/clients/{client_id}/config", handleClientConfig(sqldb))
+	clientsMux.HandleFunc("GET /api/clients/{client_id}/offline", handleClientOffline(sqldb))
 	mux.Handle("/api/clients/", clientsMux)
 
 	// Everything else -- /admin, /display/{slug}, and their static assets

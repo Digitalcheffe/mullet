@@ -20,6 +20,7 @@ import (
 	// new plugin means implementing DataPlugin and blank-importing its
 	// package here.
 	_ "github.com/Digitalcheffe/mullet/internal/plugins/data/clock"
+	_ "github.com/Digitalcheffe/mullet/internal/plugins/data/openmeteo"
 	_ "github.com/Digitalcheffe/mullet/internal/plugins/data/openweathermap"
 
 	"github.com/Digitalcheffe/mullet/internal/scheduler"

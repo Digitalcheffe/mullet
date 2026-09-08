@@ -15,12 +15,12 @@ func (f fakePlugin) Name() string { return f.id }
 func (f fakePlugin) Manifest() DataPluginManifest {
 	return DataPluginManifest{ID: f.id}
 }
-func (f fakePlugin) DataShape() string              { return "events" }
+func (f fakePlugin) DataShapes() []string           { return []string{"events"} }
 func (f fakePlugin) RefreshInterval() time.Duration { return time.Minute }
 func (f fakePlugin) Configure(cfg map[string]any) error {
 	return nil
 }
-func (f fakePlugin) Fetch(ctx context.Context) ([]any, error) {
+func (f fakePlugin) Fetch(ctx context.Context) (map[string][]any, error) {
 	return nil, nil
 }
 

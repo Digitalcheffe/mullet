@@ -15,11 +15,13 @@ import (
 )
 
 type fakePlugin struct {
-	id       string
-	shape    string
-	interval time.Duration
-	calls    atomic.Int32
-	failWith error
+	id            string
+	shape         string
+	interval      time.Duration
+	calls         atomic.Int32
+	failWith      error
+	failConfigure error
+	lastConfig    map[string]any
 }
 
 func (f *fakePlugin) ID() string   { return f.id }
@@ -27,17 +29,28 @@ func (f *fakePlugin) Name() string { return f.id }
 func (f *fakePlugin) Manifest() plugindata.DataPluginManifest {
 	return plugindata.DataPluginManifest{ID: f.id}
 }
-func (f *fakePlugin) DataShape() string              { return f.shape }
+func (f *fakePlugin) DataShapes() []string {
+	if f.shape == "" {
+		return nil
+	}
+	return []string{f.shape}
+}
 func (f *fakePlugin) RefreshInterval() time.Duration { return f.interval }
 func (f *fakePlugin) Configure(cfg map[string]any) error {
-	return nil
+	f.lastConfig = cfg
+	return f.failConfigure
 }
-func (f *fakePlugin) Fetch(ctx context.Context) ([]any, error) {
+func (f *fakePlugin) Fetch(ctx context.Context) (map[string][]any, error) {
 	f.calls.Add(1)
 	if f.failWith != nil {
 		return nil, f.failWith
 	}
-	return []any{shapes.WeatherCurrent{ID: "current", Temp: 72, Condition: "Clear", Icon: "sun"}}, nil
+	if f.shape == "" {
+		return map[string][]any{}, nil
+	}
+	return map[string][]any{
+		f.shape: {shapes.WeatherCurrent{ID: "current", Temp: 72, Condition: "Clear", Icon: "sun"}},
+	}, nil
 }
 
 func newTestDB(t *testing.T) *sql.DB {
@@ -161,4 +174,63 @@ func TestStartSkipsUnregisteredPlugin(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 	s.Stop() // must return promptly; no goroutine should have been spawned
+}
+
+func TestStartConfiguresPluginFromStoredConfig(t *testing.T) {
+	sqldb := newTestDB(t)
+	if _, err := sqldb.Exec(
+		`INSERT INTO data_plugin_instances (id, plugin_id, instance_name, refresh_seconds, config) VALUES (1, 'openweathermap', 'Home', 900, '{"api_key":"secret","location":"Seattle"}')`,
+	); err != nil {
+		t.Fatalf("seeding plugin instance: %v", err)
+	}
+
+	plugin := &fakePlugin{id: "openweathermap", interval: time.Hour}
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(plugin); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	s := New(sqldb, registry)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	s.Stop()
+
+	if plugin.lastConfig["api_key"] != "secret" || plugin.lastConfig["location"] != "Seattle" {
+		t.Errorf("lastConfig = %v, want api_key=secret location=Seattle", plugin.lastConfig)
+	}
+}
+
+func TestStartSkipsInstanceWhenConfigureFails(t *testing.T) {
+	sqldb := newTestDB(t)
+	if _, err := sqldb.Exec(
+		`INSERT INTO data_plugin_instances (id, plugin_id, instance_name, refresh_seconds, config) VALUES (1, 'openweathermap', 'Home', 900, '{}')`,
+	); err != nil {
+		t.Fatalf("seeding plugin instance: %v", err)
+	}
+
+	plugin := &fakePlugin{id: "openweathermap", interval: 10 * time.Millisecond, failConfigure: errors.New("missing api_key")}
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(plugin); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	s := New(sqldb, registry)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	time.Sleep(30 * time.Millisecond)
+	s.Stop()
+
+	if plugin.calls.Load() != 0 {
+		t.Errorf("Fetch was called %d times after Configure failed, want 0", plugin.calls.Load())
+	}
+
+	var lastError *string
+	if err := sqldb.QueryRow(`SELECT last_error FROM data_plugin_instances WHERE id = 1`).Scan(&lastError); err != nil {
+		t.Fatalf("reading last_error: %v", err)
+	}
+	if lastError == nil || *lastError != "missing api_key" {
+		t.Errorf("last_error = %v, want %q", lastError, "missing api_key")
+	}
 }

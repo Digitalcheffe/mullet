@@ -9,16 +9,18 @@ import (
 )
 
 // DataPlugin is implemented by every compiled-in data plugin. The
-// scheduler calls Fetch() on RefreshInterval() and writes the results to
-// the shape table for DataShape().
+// scheduler calls Fetch() on RefreshInterval() and writes each entry of
+// the returned map to the shape table named by its key -- a plugin
+// declares which shapes it can produce via DataShapes(), and a plugin
+// with none (e.g. clock) returns an empty map from Fetch().
 type DataPlugin interface {
 	ID() string
 	Name() string
 	Manifest() DataPluginManifest
-	DataShape() string
+	DataShapes() []string
 	RefreshInterval() time.Duration
 	Configure(cfg map[string]any) error
-	Fetch(ctx context.Context) ([]any, error)
+	Fetch(ctx context.Context) (map[string][]any, error)
 }
 
 // DataPluginManifest drives the admin UI's setup wizard: SetupFields is
@@ -28,7 +30,7 @@ type DataPluginManifest struct {
 	ID                  string
 	Name                string
 	Description         string
-	DataShape           string
+	DataShapes          []string
 	SetupFields         []SetupField
 	AuthType            string // "none", "api_key", "oauth2"
 	OAuthConfig         *OAuthConfig

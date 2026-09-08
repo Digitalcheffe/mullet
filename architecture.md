@@ -13,9 +13,10 @@ built in several places — see [Divergence from the original
 proposal](#divergence-from-the-original-proposal) at the bottom. Where
 the two disagree, this document wins.
 
-Sections below are marked **Built** or **Planned**. Planned sections
-describe intended design for work that hasn't landed yet, carried over
-from the original proposal, and name the issue that will build it.
+Sections below are marked **Built**, **Planned**, or a split of the two
+(e.g. schema built but nothing renders it yet). Planned material
+describes intended design for work that hasn't landed, carried over
+from the original proposal, and names the issue that will build it.
 
 ---
 
@@ -202,21 +203,28 @@ one.
 | `calendars` | Discovered calendars, one row per `(plugin_instance_id, external_id)` — see [entity discovery](#write-path) |
 | `task_lists` | Same shape as `calendars`, for the `tasks` contract (no writer uses this yet) |
 | `shape_events`, `shape_tasks`, `shape_weather_current`, `shape_weather_forecast`, `shape_home_devices`, `shape_packages`, `shape_infrastructure`, `shape_media_status` | One table per data shape, typed columns matching its Go struct — no JSON blobs. See `internal/db/migrations/002_shapes.sql`. |
+| `themes` | Named JSON token sets (`internal/db/migrations/004_displays.sql`). A display references one as its base theme; a card can override it via `cards.theme_override` |
+| `displays` | A physical output routed at `/display/{slug}` (unique). `theme_id` nullable FK to `themes`; `rotation_seconds` how often it rotates through its screens |
+| `screens` | A page within a display (`ON DELETE CASCADE` from `displays`). Owns its own grid (`columns`, `row_height`, `gap`, all in pixels except `columns`) rather than inheriting one from its display; `position` orders rotation |
+| `cards` | A positioned UI plugin on a screen's grid (`ON DELETE CASCADE` from `screens`). `x`/`y`/`w`/`h` are grid units. `data_plugin_instance_id` (nullable, `ON DELETE SET NULL`) is which configured plugin instance it reads from — nullable because a card's UI plugin might need no data (clock) or the admin hasn't wired one up yet; `SET NULL` rather than cascade so deleting an unrelated data plugin instance doesn't silently delete a card |
 
 Every shape table carries `plugin_instance_id` (`ON DELETE CASCADE` from
 `data_plugin_instances`) and `fetched_at`. `shape_events`/`shape_tasks`
 additionally cascade from `calendars`/`task_lists`.
 
+CRUD for all four tables above is built (see [REST API Routes](#rest-api-routes)
+below) — this is the display *hierarchy's data layer*. Nothing renders
+it yet; see [Display Hierarchy](#display-hierarchy-schema-built-designer-planned)
+and [Theme Cascade](#theme-cascade-schema-built-application-planned).
+
 ### Planned
 
-None of these tables exist yet. Full column lists are in
+Full column lists for what's not built are in
 [`docs/architecture_1.md` § SQLite Schema](docs/architecture_1.md#sqlite-schema).
 
 | Table | Purpose | Lands with |
 |---|---|---|
 | `oauth_tokens` | Access/refresh tokens for OAuth2 data plugins (Microsoft Graph, etc.) | Whichever OAuth2 plugin needs it first |
-| `displays`, `screens`, `cards` | The [display hierarchy](#display-hierarchy-planned) | #18 |
-| `themes` | The [theme cascade](#theme-cascade-partially-scaffolded) | #18/#19 |
 | `clients` | Registered dedicated-client-app devices | #29 |
 
 ---
@@ -240,6 +248,14 @@ All routes below are wired in `internal/api/router.go`.
 | `GET`/`POST /api/admin/plugins/instances` | JWT | List / create plugin instances |
 | `PUT`/`DELETE /api/admin/plugins/instances/{id}` | JWT | Update / remove an instance |
 | `POST /api/admin/plugins/instances/{id}/test` | JWT | Run one configure+fetch cycle now, report success/error |
+| `GET`/`POST /api/admin/themes` | JWT | List / create themes |
+| `PUT`/`DELETE /api/admin/themes/{id}` | JWT | Update / remove a theme (`DELETE` is `409` if a display still uses it) |
+| `GET`/`POST /api/admin/displays` | JWT | List / create displays |
+| `PUT`/`DELETE /api/admin/displays/{id}` | JWT | Update / remove a display (delete cascades to its screens and cards) |
+| `GET`/`POST /api/admin/displays/{id}/screens` | JWT | List / create screens on a display |
+| `PUT`/`DELETE /api/admin/screens/{id}` | JWT | Update / remove a screen (delete cascades to its cards) |
+| `GET`/`POST /api/admin/screens/{id}/cards` | JWT | List / create cards on a screen |
+| `PUT`/`DELETE /api/admin/cards/{id}` | JWT | Update / remove a card |
 | `GET /api/data/{shape}` | none (LAN-facing, like the display itself) | Typed rows for a data shape, optionally filtered |
 
 `requireAuth` (`internal/api/middleware.go`) guards every `/api/admin/*`
@@ -265,40 +281,59 @@ routes above already do (see [Divergence](#divergence-from-the-original-proposal
 
 ---
 
-## Display Hierarchy (Planned)
+## Display Hierarchy (Schema built, Designer planned)
 
-*Lands with #18 (display/screen/card CRUD) and #19 (admin UI for it).
-Design carried over from
-[`docs/architecture_1.md` § Display Hierarchy](docs/architecture_1.md#display-hierarchy).*
+The `displays`/`screens`/`cards` tables and their full admin CRUD API
+exist (see [SQLite Schema](#sqlite-schema) and [REST API Routes](#rest-api-routes) above)
+— an admin can already build up the hierarchy below by hand, one API
+call at a time. What's still planned is #19: the admin UI's visual
+Designer (drag-and-drop card placement) and the display frontend
+actually reading this data to render a grid — today `/display/{slug}`
+is still just a placeholder (`DisplayApp.tsx`) with no data fetch of its
+own.
 
 ```
 Display   "Kitchen"  --  /display/kitchen
-  +-- Screen 1  "Main"    -- auto-rotates on an interval
-  |     +-- Card  col:1 row:1 w:4 h:10  --> calendar-agenda (UI plugin)
-  |     +-- Card  col:5 row:1 w:8 h:3   --> weather-forecast (UI plugin)
-  +-- Screen 2  "Detail"  -- rotated in on interval or manual trigger
-        +-- Card  col:1 row:1 w:16 h:12 --> full-screen calendar view
+  +-- Screen 1  "Main"    -- rotation_seconds on the *display* controls
+  |     |                    how long each screen stays up
+  |     +-- Card  x:1 y:1 w:4  h:10 --> calendar-agenda (UI plugin)
+  |     +-- Card  x:5 y:1 w:8  h:3  --> weather-forecast (UI plugin)
+  +-- Screen 2  "Detail"
+        +-- Card  x:1 y:1 w:16 h:12 --> full-screen calendar view
 ```
 
-- **Display**: a named physical output. Slug for URL routing, a base
-  theme, grid dimensions (default 16×12 for a 16:9 screen).
-- **Screen**: a page within a display; screens rotate on a configurable
-  interval with a transition effect. At least one per display.
-- **Card**: a positioned rectangle on a screen's grid, referencing a UI
-  plugin plus its own JSON config and an optional theme override.
+- **Display** (`displays`): a named physical output, unique `slug` for
+  `/display/{slug}` routing, an optional base `theme_id`, and
+  `rotation_seconds` — how long the display stays on each screen before
+  advancing to the next.
+- **Screen** (`screens`): a page within a display (`ON DELETE CASCADE`).
+  Owns its *own* grid — `columns`, `row_height`, and `gap` (pixels) —
+  rather than inheriting fixed dimensions from its display, so one
+  screen can be a dense multi-card layout and another a single
+  full-bleed card. `position` orders the rotation.
+- **Card** (`cards`): a positioned rectangle on its screen's grid
+  (`x`/`y`/`w`/`h`, grid units, `ON DELETE CASCADE` from the screen),
+  referencing a UI plugin (`ui_plugin_id`, a free-form string — there's
+  no server-side UI plugin registry to validate it against) plus its own
+  JSON `config`, an optional data source (`data_plugin_instance_id`,
+  nullable, `ON DELETE SET NULL`), and an optional `theme_override`.
 - **UI plugin**: the React component rendered inside a card, reading one
   data shape. None exist yet — the clock/weather/calendar-agenda widgets
   implied by the plugins above are all still to be built.
 
 ---
 
-## Theme Cascade (Partially scaffolded)
+## Theme Cascade (Schema built, application planned)
 
-*The `themes` table, admin theme editor, and per-card override UI land
-with #18/#19. Design carried over from
-[`docs/architecture_1.md` § Theme Cascade](docs/architecture_1.md#theme-cascade).*
+The `themes` table and its admin CRUD API exist (a theme is just a
+name plus an opaque JSON `tokens` blob and an `is_default` flag — see
+[SQLite Schema](#sqlite-schema)/[REST API Routes](#rest-api-routes)); `displays.theme_id`
+and `cards.theme_override` are wired up to reference it. What's *not*
+built yet: an admin theme editor UI, and anything on the display side
+that actually reads a display's theme and applies it — that's #19/#23.
 
-The token **type** already exists and is in use today:
+The token **type** the `tokens`/`theme_override` JSON blobs are meant to
+hold already exists and is in use today, independent of the DB table:
 [`web/src/shared/themes/tokens.ts`](web/src/shared/themes/tokens.ts)
 defines `ThemeTokens` (background, card background/border, text/accent
 color, font, radius, opacity, blur) and a built-in `defaultTheme`,
@@ -309,12 +344,15 @@ admin-UI theme system (`web/src/admin/adminTheme.css`) that is *not*
 part of this cascade — that one styles the admin app itself and isn't
 DB-configurable.
 
-Planned cascade, once `themes` exists: a **Display** sets a base theme
-(FK to `themes`); its **Screens'** cards inherit it by default; a
-**Card** can override specific tokens via a nullable `theme_override`
-JSON blob (null = full inheritance). Overrides are meant to be limited
-in scope (e.g. a card's own background opacity and accent color, not
-global font or spacing) to keep one display visually coherent.
+Planned cascade, once something renders it: a **Display** sets a base
+theme (FK to `themes`); its **Screens'** cards inherit it by default; a
+**Card** can override specific tokens via `theme_override` (nullable —
+null means full inheritance, which is what `CreateCard`/`UpdateCard`
+store when it's omitted). Overrides are meant to be limited in scope
+(e.g. a card's own background opacity and accent color, not global font
+or spacing) to keep one display visually coherent — nothing enforces
+that limit at the API layer today; `theme_override` accepts any JSON
+object.
 
 ---
 
@@ -456,6 +494,15 @@ noted here so that doc's specifics aren't taken as current fact.
   whole seconds (`recommended_interval_seconds`, `min_interval_seconds`)
   rather than the Go-side `time.Duration` the proposal's JSON sketch
   implied.
+- **Display/screen/card schema** (#18) departs from the proposal in three
+  ways: the grid (`columns`/`row_height`/`gap`) lives on `screens`, not
+  fixed `grid_cols`/`grid_rows` on `displays` -- each screen can have its
+  own layout. Card position is `x`/`y`/`w`/`h`, not `col`/`row`/
+  `width`/`height`. And `cards` gained a `data_plugin_instance_id` FK the
+  proposal didn't have -- a card needs to know *which* configured plugin
+  instance to read from (there can be more than one of the same plugin
+  type, e.g. two `ics-feed` instances for two calendars), not just which
+  UI plugin renders it.
 
 When you find another one of these while implementing an issue, add it
 here rather than silently leaving the proposal doc wrong.

@@ -1,0 +1,422 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"testing"
+)
+
+func TestThemeCRUDEndpoints(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	body, _ := json.Marshal(themeRequest{Name: "Glass Dark", Tokens: json.RawMessage(`{"accentColor":"#4f9dff"}`), IsDefault: true})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/themes", body))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var created themeResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decoding create response: %v", err)
+	}
+	if created.Name != "Glass Dark" || !created.IsDefault || string(created.Tokens) != `{"accentColor":"#4f9dff"}` {
+		t.Errorf("created = %+v, unexpected values", created)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/themes", nil))
+	var list []themeResponse
+	json.Unmarshal(rec.Body.Bytes(), &list)
+	if len(list) != 1 {
+		t.Fatalf("theme list has %d entries, want 1", len(list))
+	}
+
+	updateBody, _ := json.Marshal(themeRequest{Name: "Glass Light", Tokens: json.RawMessage(`{}`), IsDefault: false})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/themes/"+strconv.Itoa(created.ID), updateBody))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var updated themeResponse
+	json.Unmarshal(rec.Body.Bytes(), &updated)
+	if updated.Name != "Glass Light" || updated.IsDefault {
+		t.Errorf("updated = %+v, unexpected values", updated)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodDelete, "/api/admin/themes/"+strconv.Itoa(created.ID), nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, want 204 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateThemeRejectsMissingName(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	body, _ := json.Marshal(themeRequest{Name: ""})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/themes", body))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestCreateThemeRejectsNonObjectTokens(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	body, _ := json.Marshal(themeRequest{Name: "Bad", Tokens: json.RawMessage(`"not an object"`)})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/themes", body))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestDeleteThemeInUseReturns409(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	themeBody, _ := json.Marshal(themeRequest{Name: "Glass Dark"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/themes", themeBody))
+	var theme themeResponse
+	json.Unmarshal(rec.Body.Bytes(), &theme)
+
+	displayBody, _ := json.Marshal(displayRequest{Name: "Kitchen", Slug: "kitchen", ThemeID: &theme.ID})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays", displayBody))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("creating display: status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodDelete, "/api/admin/themes/"+strconv.Itoa(theme.ID), nil))
+	if rec.Code != http.StatusConflict {
+		t.Errorf("deleting in-use theme: status = %d, want 409", rec.Code)
+	}
+}
+
+func TestDisplayCRUDEndpoints(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	body, _ := json.Marshal(displayRequest{Name: "Kitchen", Slug: "kitchen"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays", body))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var created displayResponse
+	json.Unmarshal(rec.Body.Bytes(), &created)
+	if created.Name != "Kitchen" || created.Slug != "kitchen" || created.RotationSeconds != 30 {
+		t.Errorf("created = %+v, unexpected values (want default rotation_seconds=30)", created)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/displays", nil))
+	var list []displayResponse
+	json.Unmarshal(rec.Body.Bytes(), &list)
+	if len(list) != 1 {
+		t.Fatalf("display list has %d entries, want 1", len(list))
+	}
+
+	updateBody, _ := json.Marshal(displayRequest{Name: "Office", Slug: "office", RotationSeconds: 60})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/displays/"+strconv.Itoa(created.ID), updateBody))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var updated displayResponse
+	json.Unmarshal(rec.Body.Bytes(), &updated)
+	if updated.Name != "Office" || updated.Slug != "office" || updated.RotationSeconds != 60 {
+		t.Errorf("updated = %+v, unexpected values", updated)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodDelete, "/api/admin/displays/"+strconv.Itoa(created.ID), nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, want 204 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateDisplayRejectsMissingFields(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	body, _ := json.Marshal(displayRequest{Name: "Kitchen"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays", body))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("missing slug: status = %d, want 400", rec.Code)
+	}
+}
+
+func TestCreateDisplayDuplicateSlugRejected(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	body, _ := json.Marshal(displayRequest{Name: "Kitchen", Slug: "kitchen"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays", body))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("first create: status = %d, want 201", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays", body))
+	if rec.Code == http.StatusCreated {
+		t.Error("duplicate slug: expected non-201 status")
+	}
+}
+
+func TestUpdateDeleteMissingDisplayReturns404(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	body, _ := json.Marshal(displayRequest{Name: "X", Slug: "x"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/displays/9999", body))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("update missing: status = %d, want 404", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodDelete, "/api/admin/displays/9999", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("delete missing: status = %d, want 404", rec.Code)
+	}
+}
+
+// createTestDisplay is a test helper: creates a display via the HTTP API
+// and returns its ID.
+func createTestDisplay(t *testing.T, router http.Handler) int {
+	t.Helper()
+	body, _ := json.Marshal(displayRequest{Name: "Kitchen", Slug: "kitchen-" + t.Name()})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays", body))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("createTestDisplay: status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var d displayResponse
+	json.Unmarshal(rec.Body.Bytes(), &d)
+	return d.ID
+}
+
+func TestScreenCRUDEndpoints(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	displayID := createTestDisplay(t, router)
+
+	body, _ := json.Marshal(screenRequest{Name: "Main", Position: 0})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays/"+strconv.Itoa(displayID)+"/screens", body))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var created screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &created)
+	// Columns/RowHeight default when omitted (0 isn't a usable grid size);
+	// Gap does not, since 0 is a legitimate "no gap" value in its own right.
+	if created.DisplayID != displayID || created.Name != "Main" || created.Columns != 16 || created.RowHeight != 40 || created.Gap != 0 {
+		t.Errorf("created = %+v, unexpected values (want columns=16, row_height=40 defaults, gap=0 as given)", created)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/displays/"+strconv.Itoa(displayID)+"/screens", nil))
+	var list []screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &list)
+	if len(list) != 1 {
+		t.Fatalf("screen list has %d entries, want 1", len(list))
+	}
+
+	updateBody, _ := json.Marshal(screenRequest{Name: "Detail", Position: 1, Columns: 12, RowHeight: 50, Gap: 10})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/screens/"+strconv.Itoa(created.ID), updateBody))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var updated screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &updated)
+	if updated.Name != "Detail" || updated.Columns != 12 {
+		t.Errorf("updated = %+v, unexpected values", updated)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodDelete, "/api/admin/screens/"+strconv.Itoa(created.ID), nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, want 204 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateScreenNegativeGapDefaults(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	displayID := createTestDisplay(t, router)
+
+	body, _ := json.Marshal(screenRequest{Name: "Main", Gap: -1})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays/"+strconv.Itoa(displayID)+"/screens", body))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var created screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &created)
+	if created.Gap != 8 {
+		t.Errorf("Gap = %d, want 8 (negative gap should default)", created.Gap)
+	}
+}
+
+func TestCreateScreenUnknownDisplayReturns400(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	body, _ := json.Marshal(screenRequest{Name: "Main"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays/9999/screens", body))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+// createTestScreen is a test helper: creates a display and one screen on
+// it via the HTTP API, returning the screen's ID.
+func createTestScreen(t *testing.T, router http.Handler) int {
+	t.Helper()
+	displayID := createTestDisplay(t, router)
+	body, _ := json.Marshal(screenRequest{Name: "Main"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays/"+strconv.Itoa(displayID)+"/screens", body))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("createTestScreen: status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var s screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &s)
+	return s.ID
+}
+
+func TestCardCRUDEndpoints(t *testing.T) {
+	router, sqldb := newTestRouter(t, nil)
+	screenID := createTestScreen(t, router)
+	instanceID, err := insertTestInstance(sqldb, "clock", "Kitchen Clock", 60, true, "{}")
+	if err != nil {
+		t.Fatalf("insertTestInstance: %v", err)
+	}
+
+	body, _ := json.Marshal(cardRequest{
+		UIPluginID: "clock", DataPluginInstanceID: &instanceID,
+		X: 1, Y: 1, W: 4, H: 3, Config: json.RawMessage(`{"format":"24h"}`),
+	})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/screens/"+strconv.Itoa(screenID)+"/cards", body))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var created cardResponse
+	json.Unmarshal(rec.Body.Bytes(), &created)
+	if created.ScreenID != screenID || created.UIPluginID != "clock" || created.DataPluginInstanceID == nil || *created.DataPluginInstanceID != instanceID {
+		t.Errorf("created = %+v, unexpected values", created)
+	}
+	if created.X != 1 || created.Y != 1 || created.W != 4 || created.H != 3 {
+		t.Errorf("created position = (%d,%d,%d,%d), want (1,1,4,3)", created.X, created.Y, created.W, created.H)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/screens/"+strconv.Itoa(screenID)+"/cards", nil))
+	var list []cardResponse
+	json.Unmarshal(rec.Body.Bytes(), &list)
+	if len(list) != 1 {
+		t.Fatalf("card list has %d entries, want 1", len(list))
+	}
+
+	updateBody, _ := json.Marshal(cardRequest{UIPluginID: "clock", X: 2, Y: 2, W: 5, H: 4})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/cards/"+strconv.Itoa(created.ID), updateBody))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var updated cardResponse
+	json.Unmarshal(rec.Body.Bytes(), &updated)
+	if updated.DataPluginInstanceID != nil {
+		t.Errorf("updated.DataPluginInstanceID = %v, want nil (cleared by update)", updated.DataPluginInstanceID)
+	}
+	if updated.X != 2 || updated.W != 5 {
+		t.Errorf("updated position = (%d,_,%d,_), want (2,_,5,_)", updated.X, updated.W)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodDelete, "/api/admin/cards/"+strconv.Itoa(created.ID), nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, want 204 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateCardRejectsMissingUIPluginID(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	screenID := createTestScreen(t, router)
+
+	body, _ := json.Marshal(cardRequest{X: 1, Y: 1, W: 4, H: 3})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/screens/"+strconv.Itoa(screenID)+"/cards", body))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestCreateCardUnknownDataPluginInstanceReturns400(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	screenID := createTestScreen(t, router)
+
+	missing := 9999
+	body, _ := json.Marshal(cardRequest{UIPluginID: "clock", DataPluginInstanceID: &missing, X: 1, Y: 1, W: 4, H: 3})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/screens/"+strconv.Itoa(screenID)+"/cards", body))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestDeletingDisplayCascadesToScreensAndCardsViaAPI(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	displayID := createTestDisplay(t, router)
+
+	screenBody, _ := json.Marshal(screenRequest{Name: "Main"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays/"+strconv.Itoa(displayID)+"/screens", screenBody))
+	var screen screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &screen)
+
+	cardBody, _ := json.Marshal(cardRequest{UIPluginID: "clock", X: 1, Y: 1, W: 4, H: 3})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/screens/"+strconv.Itoa(screen.ID)+"/cards", cardBody))
+	var card cardResponse
+	json.Unmarshal(rec.Body.Bytes(), &card)
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodDelete, "/api/admin/displays/"+strconv.Itoa(displayID), nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("deleting display: status = %d, want 204", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/screens/"+strconv.Itoa(screen.ID), screenBody))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("screen after cascade delete: status = %d, want 404", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/cards/"+strconv.Itoa(card.ID), cardBody))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("card after cascade delete: status = %d, want 404", rec.Code)
+	}
+}
+
+func TestDisplayHierarchyEndpointsRequireAuth(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	for _, req := range []*http.Request{
+		httptest.NewRequest(http.MethodGet, "/api/admin/themes", nil),
+		httptest.NewRequest(http.MethodGet, "/api/admin/displays", nil),
+		httptest.NewRequest(http.MethodGet, "/api/admin/displays/1/screens", nil),
+		httptest.NewRequest(http.MethodGet, "/api/admin/screens/1/cards", nil),
+	} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s %s without token: status = %d, want 401", req.Method, req.URL.Path, rec.Code)
+		}
+	}
+}

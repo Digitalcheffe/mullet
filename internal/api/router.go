@@ -53,6 +53,27 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	adminMux.HandleFunc("PUT /api/admin/plugins/instances/{id}", handleUpdatePluginInstance(sqldb, registry, sched))
 	adminMux.HandleFunc("DELETE /api/admin/plugins/instances/{id}", handleDeletePluginInstance(sqldb, sched))
 	adminMux.HandleFunc("POST /api/admin/plugins/instances/{id}/test", handleTestPluginInstance(sched))
+
+	adminMux.HandleFunc("GET /api/admin/themes", handleListThemes(sqldb))
+	adminMux.HandleFunc("POST /api/admin/themes", handleCreateTheme(sqldb))
+	adminMux.HandleFunc("PUT /api/admin/themes/{id}", handleUpdateTheme(sqldb))
+	adminMux.HandleFunc("DELETE /api/admin/themes/{id}", handleDeleteTheme(sqldb))
+
+	adminMux.HandleFunc("GET /api/admin/displays", handleListDisplays(sqldb))
+	adminMux.HandleFunc("POST /api/admin/displays", handleCreateDisplay(sqldb))
+	adminMux.HandleFunc("PUT /api/admin/displays/{id}", handleUpdateDisplay(sqldb))
+	adminMux.HandleFunc("DELETE /api/admin/displays/{id}", handleDeleteDisplay(sqldb))
+
+	adminMux.HandleFunc("GET /api/admin/displays/{id}/screens", handleListScreens(sqldb))
+	adminMux.HandleFunc("POST /api/admin/displays/{id}/screens", handleCreateScreen(sqldb))
+	adminMux.HandleFunc("PUT /api/admin/screens/{id}", handleUpdateScreen(sqldb))
+	adminMux.HandleFunc("DELETE /api/admin/screens/{id}", handleDeleteScreen(sqldb))
+
+	adminMux.HandleFunc("GET /api/admin/screens/{id}/cards", handleListCards(sqldb))
+	adminMux.HandleFunc("POST /api/admin/screens/{id}/cards", handleCreateCard(sqldb))
+	adminMux.HandleFunc("PUT /api/admin/cards/{id}", handleUpdateCard(sqldb))
+	adminMux.HandleFunc("DELETE /api/admin/cards/{id}", handleDeleteCard(sqldb))
+
 	mux.Handle("/api/admin/", requireAuth(jwtSecret, authDisabled)(adminMux))
 
 	// /api/data/* -- served to the display frontend directly from typed

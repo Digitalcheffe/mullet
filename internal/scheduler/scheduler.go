@@ -89,19 +89,12 @@ func (s *Scheduler) Reload() error {
 			delete(s.running, inst.ID)
 		}
 
-		plugin, ok := s.registry.Get(inst.PluginID)
-		if !ok {
+		if _, ok := s.registry.Get(inst.PluginID); !ok {
 			log.Printf("scheduler: no registered plugin for instance %d (plugin_id=%q), skipping", inst.ID, inst.PluginID)
 			continue
 		}
 
-		// NOTE: the registry hands out one shared plugin object per
-		// plugin_id, so two enabled instances of the *same* plugin type
-		// would race on its config fields here and while fetching. Fine
-		// while every plugin is effectively single-instance in practice;
-		// revisit (e.g. a Clone() on DataPlugin) when a plugin that
-		// legitimately supports multiple instances lands (ics-feed, #16).
-		if err := configurePlugin(plugin, inst.Config); err != nil {
+		if err := s.configureInstance(inst); err != nil {
 			log.Printf("scheduler: plugin %q (instance %d) configure failed: %v", inst.PluginID, inst.ID, err)
 			if err := db.RecordFetchError(s.db, inst.ID, err); err != nil {
 				log.Printf("scheduler: recording fetch error for instance %d: %v", inst.ID, err)
@@ -111,17 +104,48 @@ func (s *Scheduler) Reload() error {
 
 		interval := inst.RefreshInterval
 		if interval <= 0 {
-			interval = plugin.RefreshInterval()
+			if plugin, ok := s.registry.Get(inst.PluginID); ok {
+				interval = plugin.RefreshInterval()
+			}
 		}
 
 		instCtx, instCancel := context.WithCancel(s.ctx)
 		s.running[inst.ID] = instCancel
 
 		s.wg.Add(1)
-		go s.run(instCtx, inst, plugin, interval)
+		go s.run(instCtx, inst, interval)
 	}
 
 	return nil
+}
+
+// TestInstance runs one configure+fetch+write cycle for instanceID
+// immediately and synchronously, returning the outcome. Backs the admin
+// API's "test connection" action. Goes through the same
+// Registry.WithPlugin serialization as the scheduler's own ticks, so a
+// manual test can never interleave Configure()/Fetch() with a scheduled
+// run (or another test) on the plugin type's one shared object.
+func (s *Scheduler) TestInstance(ctx context.Context, instanceID int) error {
+	status, err := db.GetPluginInstance(s.db, instanceID)
+	if err != nil {
+		return err
+	}
+
+	inst := db.PluginInstance{
+		ID:              status.ID,
+		PluginID:        status.PluginID,
+		Config:          status.Config,
+		RefreshInterval: status.RefreshInterval,
+	}
+
+	if err := s.configureInstance(inst); err != nil {
+		if rerr := db.RecordFetchError(s.db, inst.ID, err); rerr != nil {
+			log.Printf("scheduler: recording fetch error for instance %d: %v", inst.ID, rerr)
+		}
+		return err
+	}
+
+	return s.fetchOnce(ctx, inst)
 }
 
 // Stop cancels every running plugin loop and waits for them to exit.
@@ -136,22 +160,29 @@ func (s *Scheduler) Stop() {
 	s.wg.Wait()
 }
 
-// configurePlugin parses rawConfig (a JSON object, or "" for none) and
-// applies it to plugin.
-func configurePlugin(plugin plugindata.DataPlugin, rawConfig string) error {
+// configureInstance parses inst's stored config JSON and applies it to
+// its plugin, serialized via Registry.WithPlugin.
+func (s *Scheduler) configureInstance(inst db.PluginInstance) error {
 	cfg := map[string]any{}
-	if rawConfig != "" {
-		if err := json.Unmarshal([]byte(rawConfig), &cfg); err != nil {
+	if inst.Config != "" {
+		if err := json.Unmarshal([]byte(inst.Config), &cfg); err != nil {
 			return fmt.Errorf("parsing config: %w", err)
 		}
 	}
-	return plugin.Configure(cfg)
+
+	ok, err := s.registry.WithPlugin(inst.PluginID, func(p plugindata.DataPlugin) error {
+		return p.Configure(cfg)
+	})
+	if !ok {
+		return fmt.Errorf("plugin %q not registered", inst.PluginID)
+	}
+	return err
 }
 
-func (s *Scheduler) run(ctx context.Context, inst db.PluginInstance, plugin plugindata.DataPlugin, interval time.Duration) {
+func (s *Scheduler) run(ctx context.Context, inst db.PluginInstance, interval time.Duration) {
 	defer s.wg.Done()
 
-	s.fetchOnce(ctx, inst, plugin)
+	s.fetchOnce(ctx, inst)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -161,22 +192,37 @@ func (s *Scheduler) run(ctx context.Context, inst db.PluginInstance, plugin plug
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.fetchOnce(ctx, inst, plugin)
+			s.fetchOnce(ctx, inst)
 		}
 	}
 }
 
-// fetchOnce runs a single fetch/write cycle for one plugin instance. It
-// never panics or returns an error to the caller -- a failing plugin logs
-// and records its error without taking down the scheduler.
-func (s *Scheduler) fetchOnce(ctx context.Context, inst db.PluginInstance, plugin plugindata.DataPlugin) {
-	shapeRows, err := plugin.Fetch(ctx)
-	if err != nil {
-		log.Printf("scheduler: plugin %q (instance %d) fetch failed: %v", plugin.ID(), inst.ID, err)
-		if err := db.RecordFetchError(s.db, inst.ID, err); err != nil {
-			log.Printf("scheduler: recording fetch error for instance %d: %v", inst.ID, err)
+// fetchOnce runs a single fetch/write cycle for one plugin instance,
+// serialized via Registry.WithPlugin. It never panics -- a failing
+// plugin logs and records its error without taking down the scheduler --
+// but does return that error, for TestInstance's benefit.
+func (s *Scheduler) fetchOnce(ctx context.Context, inst db.PluginInstance) error {
+	var shapeRows map[string][]any
+
+	ok, fetchErr := s.registry.WithPlugin(inst.PluginID, func(p plugindata.DataPlugin) error {
+		var err error
+		shapeRows, err = p.Fetch(ctx)
+		return err
+	})
+	if !ok {
+		err := fmt.Errorf("plugin %q not registered", inst.PluginID)
+		log.Printf("scheduler: %v (instance %d)", err, inst.ID)
+		if rerr := db.RecordFetchError(s.db, inst.ID, err); rerr != nil {
+			log.Printf("scheduler: recording fetch error for instance %d: %v", inst.ID, rerr)
 		}
-		return
+		return err
+	}
+	if fetchErr != nil {
+		log.Printf("scheduler: plugin %q (instance %d) fetch failed: %v", inst.PluginID, inst.ID, fetchErr)
+		if rerr := db.RecordFetchError(s.db, inst.ID, fetchErr); rerr != nil {
+			log.Printf("scheduler: recording fetch error for instance %d: %v", inst.ID, rerr)
+		}
+		return fetchErr
 	}
 
 	shapes := make([]string, 0, len(shapeRows))
@@ -187,15 +233,16 @@ func (s *Scheduler) fetchOnce(ctx context.Context, inst db.PluginInstance, plugi
 
 	for _, shape := range shapes {
 		if err := db.WriteShape(s.db, shape, inst.ID, shapeRows[shape]); err != nil {
-			log.Printf("scheduler: plugin %q (instance %d) write failed for shape %q: %v", plugin.ID(), inst.ID, shape, err)
-			if err := db.RecordFetchError(s.db, inst.ID, err); err != nil {
-				log.Printf("scheduler: recording fetch error for instance %d: %v", inst.ID, err)
+			log.Printf("scheduler: plugin %q (instance %d) write failed for shape %q: %v", inst.PluginID, inst.ID, shape, err)
+			if rerr := db.RecordFetchError(s.db, inst.ID, err); rerr != nil {
+				log.Printf("scheduler: recording fetch error for instance %d: %v", inst.ID, rerr)
 			}
-			return
+			return err
 		}
 	}
 
 	if err := db.RecordFetchSuccess(s.db, inst.ID); err != nil {
 		log.Printf("scheduler: recording fetch success for instance %d: %v", inst.ID, err)
 	}
+	return nil
 }

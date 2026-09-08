@@ -273,6 +273,39 @@ func handleDeletePluginInstance(sqldb *sql.DB, sched *scheduler.Scheduler) http.
 	}
 }
 
+type testInstanceResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+
+// handleTestPluginInstance runs one configure+fetch cycle for an existing
+// plugin instance immediately, so an admin can verify its config without
+// waiting for the next scheduled fetch. Always responds 200 with the
+// outcome in the body -- a failed fetch is an expected, reportable result,
+// not a server error.
+func handleTestPluginInstance(sched *scheduler.Scheduler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(r.PathValue("id"))
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+
+		resp := testInstanceResponse{Success: true}
+		if err := sched.TestInstance(r.Context(), id); err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			resp.Success = false
+			resp.Error = err.Error()
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}
+}
+
 func writeInstance(w http.ResponseWriter, sqldb *sql.DB, id int, status int) {
 	inst, err := db.GetPluginInstance(sqldb, id)
 	if err != nil {

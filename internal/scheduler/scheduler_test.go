@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -80,10 +81,14 @@ func TestFetchOnceSuccessWritesShapeAndRecordsFetch(t *testing.T) {
 	}
 
 	plugin := &fakePlugin{id: "openweathermap", shape: "weather_current", interval: time.Hour}
-	s := New(sqldb, plugindata.NewRegistry())
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(plugin); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	s := New(sqldb, registry)
 	inst := db.PluginInstance{ID: 1, PluginID: "openweathermap", RefreshInterval: time.Hour}
 
-	s.fetchOnce(context.Background(), inst, plugin)
+	s.fetchOnce(context.Background(), inst)
 
 	var count int
 	if err := sqldb.QueryRow(`SELECT COUNT(*) FROM shape_weather_current WHERE plugin_instance_id = 1`).Scan(&count); err != nil {
@@ -111,10 +116,14 @@ func TestFetchOnceErrorRecordsErrorWithoutPanicking(t *testing.T) {
 	}
 
 	plugin := &fakePlugin{id: "openweathermap", shape: "weather_current", interval: time.Hour, failWith: errors.New("api unreachable")}
-	s := New(sqldb, plugindata.NewRegistry())
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(plugin); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	s := New(sqldb, registry)
 	inst := db.PluginInstance{ID: 1, PluginID: "openweathermap", RefreshInterval: time.Hour}
 
-	s.fetchOnce(context.Background(), inst, plugin) // must not panic
+	s.fetchOnce(context.Background(), inst) // must not panic
 
 	var lastError *string
 	if err := sqldb.QueryRow(`SELECT last_error FROM data_plugin_instances WHERE id = 1`).Scan(&lastError); err != nil {
@@ -360,4 +369,127 @@ func TestReloadRestartsChangedInstanceImmediately(t *testing.T) {
 	if plugin.lastConfig["location"] != "changed" {
 		t.Errorf("lastConfig = %v, want location=changed", plugin.lastConfig)
 	}
+}
+
+func TestTestInstanceRunsConfigureAndFetch(t *testing.T) {
+	sqldb := newTestDB(t)
+	id, err := db.CreatePluginInstance(sqldb, "openweathermap", "Home", 900, false, `{"location":"Seattle"}`)
+	if err != nil {
+		t.Fatalf("CreatePluginInstance: %v", err)
+	}
+
+	plugin := &fakePlugin{id: "openweathermap", shape: "weather_current", interval: time.Hour}
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(plugin); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	s := New(sqldb, registry)
+
+	if err := s.TestInstance(context.Background(), id); err != nil {
+		t.Fatalf("TestInstance: %v", err)
+	}
+
+	if plugin.calls.Load() != 1 {
+		t.Errorf("plugin called %d times, want 1", plugin.calls.Load())
+	}
+	if plugin.lastConfig["location"] != "Seattle" {
+		t.Errorf("lastConfig = %v, want location=Seattle", plugin.lastConfig)
+	}
+
+	var count int
+	if err := sqldb.QueryRow(`SELECT COUNT(*) FROM shape_weather_current WHERE plugin_instance_id = ?`, id).Scan(&count); err != nil {
+		t.Fatalf("counting shape_weather_current: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("shape_weather_current has %d rows after TestInstance, want 1", count)
+	}
+}
+
+func TestTestInstanceReturnsFetchError(t *testing.T) {
+	sqldb := newTestDB(t)
+	id, err := db.CreatePluginInstance(sqldb, "openweathermap", "Home", 900, false, `{}`)
+	if err != nil {
+		t.Fatalf("CreatePluginInstance: %v", err)
+	}
+
+	plugin := &fakePlugin{id: "openweathermap", interval: time.Hour, failWith: errors.New("api unreachable")}
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(plugin); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	s := New(sqldb, registry)
+
+	err = s.TestInstance(context.Background(), id)
+	if err == nil || err.Error() != "api unreachable" {
+		t.Errorf("TestInstance error = %v, want api unreachable", err)
+	}
+
+	var lastError *string
+	sqldb.QueryRow(`SELECT last_error FROM data_plugin_instances WHERE id = ?`, id).Scan(&lastError)
+	if lastError == nil || *lastError != "api unreachable" {
+		t.Errorf("last_error = %v, want api unreachable", lastError)
+	}
+}
+
+func TestTestInstanceUnknownID(t *testing.T) {
+	sqldb := newTestDB(t)
+	s := New(sqldb, plugindata.NewRegistry())
+
+	if err := s.TestInstance(context.Background(), 9999); !errors.Is(err, db.ErrNotFound) {
+		t.Errorf("TestInstance(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func TestTestInstanceDoesNotRaceWithScheduledFetch(t *testing.T) {
+	sqldb := newTestDB(t)
+	id, err := db.CreatePluginInstance(sqldb, "openweathermap", "Home", 0, true, `{}`)
+	if err != nil {
+		t.Fatalf("CreatePluginInstance: %v", err)
+	}
+
+	plugin := &concurrencyCheckFakePlugin{fakePlugin: fakePlugin{id: "openweathermap", shape: "weather_current", interval: 5 * time.Millisecond}}
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(plugin); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	s := New(sqldb, registry)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Stop()
+
+	// Hammer TestInstance concurrently with the scheduler's own ticks.
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.TestInstance(context.Background(), id)
+		}()
+	}
+	wg.Wait()
+
+	if plugin.violation.Load() {
+		t.Error("a manual TestInstance call overlapped with a scheduled fetch on the shared plugin object")
+	}
+}
+
+// concurrencyCheckFakePlugin extends fakePlugin to detect two callers
+// inside Fetch() at once, proving Registry.WithPlugin's serialization
+// covers TestInstance vs. the scheduler's own ticks, not just two
+// TestInstance calls against each other.
+type concurrencyCheckFakePlugin struct {
+	fakePlugin
+	inside    atomic.Bool
+	violation atomic.Bool
+}
+
+func (p *concurrencyCheckFakePlugin) Fetch(ctx context.Context) (map[string][]any, error) {
+	if !p.inside.CompareAndSwap(false, true) {
+		p.violation.Store(true)
+	}
+	defer p.inside.Store(false)
+	time.Sleep(time.Millisecond)
+	return p.fakePlugin.Fetch(ctx)
 }

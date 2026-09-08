@@ -225,6 +225,38 @@ func TestDeletePluginInstanceNotFound(t *testing.T) {
 	}
 }
 
+func TestTestPluginInstanceSuccess(t *testing.T) {
+	router, sqldb := newTestRouter(t, nil)
+	id, err := insertTestInstance(sqldb, "clock", "Kitchen Clock", 60, true, "{}")
+	if err != nil {
+		t.Fatalf("insertTestInstance: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/plugins/instances/"+strconv.Itoa(id)+"/test", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var result testInstanceResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if !result.Success || result.Error != "" {
+		t.Errorf("result = %+v, want success with no error", result)
+	}
+}
+
+func TestTestPluginInstanceNotFound(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/plugins/instances/9999/test", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
 func TestPluginEndpointsRequireAuth(t *testing.T) {
 	router, _ := newTestRouter(t, nil)
 
@@ -232,6 +264,7 @@ func TestPluginEndpointsRequireAuth(t *testing.T) {
 		httptest.NewRequest(http.MethodGet, "/api/admin/plugins", nil),
 		httptest.NewRequest(http.MethodGet, "/api/admin/plugins/instances", nil),
 		httptest.NewRequest(http.MethodPost, "/api/admin/plugins/instances", bytes.NewReader([]byte(`{}`))),
+		httptest.NewRequest(http.MethodPost, "/api/admin/plugins/instances/1/test", nil),
 	} {
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)

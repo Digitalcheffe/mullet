@@ -14,6 +14,13 @@ export interface ThemeTokens {
   blur: string;
 }
 
+// backgroundCSS turns a theme's background token into a CSS `background`
+// shorthand value -- solid and gradient values are already valid CSS on
+// their own, but an image needs `url(...)` plus sizing/positioning.
+export function backgroundCSS(background: ThemeTokens['background']): string {
+  return background.type === 'image' ? `center/cover no-repeat url(${background.value})` : background.value;
+}
+
 export const defaultTheme: ThemeTokens = {
   background: { type: 'solid', value: '#0b0f14' },
   cardBackground: 'rgba(255, 255, 255, 0.06)',

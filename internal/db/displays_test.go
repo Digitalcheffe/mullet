@@ -111,6 +111,27 @@ func TestDisplayCRUD(t *testing.T) {
 	}
 }
 
+func TestGetDisplayBySlug(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	id, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30, true, true)
+	if err != nil {
+		t.Fatalf("CreateDisplay: %v", err)
+	}
+
+	got, err := GetDisplayBySlug(sqldb, "kitchen")
+	if err != nil {
+		t.Fatalf("GetDisplayBySlug: %v", err)
+	}
+	if got.ID != id || got.Name != "Kitchen" {
+		t.Errorf("GetDisplayBySlug = %+v, want ID %d, Name Kitchen", got, id)
+	}
+
+	if _, err := GetDisplayBySlug(sqldb, "does-not-exist"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetDisplayBySlug(unknown) = %v, want ErrNotFound", err)
+	}
+}
+
 func TestCreateDisplayDuplicateSlugFails(t *testing.T) {
 	sqldb := newTestDB(t)
 

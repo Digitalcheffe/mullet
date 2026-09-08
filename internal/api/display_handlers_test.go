@@ -455,6 +455,90 @@ func TestDeletingDisplayCascadesToScreensAndCardsViaAPI(t *testing.T) {
 	}
 }
 
+func TestGetDisplayLayoutEndpoint(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	themeBody, _ := json.Marshal(themeRequest{Name: "Glass Dark", Tokens: json.RawMessage(`{"accentColor":"#4f9dff"}`)})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/themes", themeBody))
+	var theme themeResponse
+	json.Unmarshal(rec.Body.Bytes(), &theme)
+
+	displayBody, _ := json.Marshal(displayRequest{
+		Name: "Kitchen", Slug: "kitchen", ThemeID: &theme.ID, RotationSeconds: 45, ShowTopBar: true, ShowBottomBar: true,
+	})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays", displayBody))
+	var display displayResponse
+	json.Unmarshal(rec.Body.Bytes(), &display)
+
+	screenBody, _ := json.Marshal(screenRequest{Name: "Main"})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays/"+strconv.Itoa(display.ID)+"/screens", screenBody))
+	var screen screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &screen)
+
+	cardBody, _ := json.Marshal(cardRequest{UIPluginID: "mullet-weather-current", X: 1, Y: 1, W: 4, H: 3, Config: json.RawMessage(`{"unit":"°F"}`)})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/screens/"+strconv.Itoa(screen.ID)+"/cards", cardBody))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create card: status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	// The display layout endpoint itself takes no auth token -- it's
+	// served to the display kiosk, not an admin.
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/display/kitchen", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var layout displayLayoutResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &layout); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	if layout.Name != "Kitchen" || layout.Slug != "kitchen" || layout.RotationSeconds != 45 {
+		t.Errorf("layout = %+v, unexpected values", layout)
+	}
+	if string(layout.Theme) != `{"accentColor":"#4f9dff"}` {
+		t.Errorf("layout.Theme = %s, want the display's theme tokens", layout.Theme)
+	}
+	if len(layout.Screens) != 1 || len(layout.Screens[0].Cards) != 1 {
+		t.Fatalf("layout.Screens = %+v, want 1 screen with 1 card", layout.Screens)
+	}
+	if layout.Screens[0].Cards[0].UIPluginID != "mullet-weather-current" {
+		t.Errorf("card ui_plugin_id = %q, want mullet-weather-current", layout.Screens[0].Cards[0].UIPluginID)
+	}
+}
+
+func TestGetDisplayLayoutUnknownSlugReturns404(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/display/does-not-exist", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestGetDisplayLayoutOmitsThemeWhenUnset(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	displayBody, _ := json.Marshal(displayRequest{Name: "Office", Slug: "office"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays", displayBody))
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/display/office", nil))
+	var layout displayLayoutResponse
+	json.Unmarshal(rec.Body.Bytes(), &layout)
+	if layout.Theme != nil {
+		t.Errorf("layout.Theme = %s, want nil (no theme_id set on the display)", layout.Theme)
+	}
+	if len(layout.Screens) != 0 {
+		t.Errorf("layout.Screens = %+v, want empty (no screens created)", layout.Screens)
+	}
+}
+
 func TestDisplayHierarchyEndpointsRequireAuth(t *testing.T) {
 	router, _ := newTestRouter(t, nil)
 

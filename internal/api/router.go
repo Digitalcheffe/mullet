@@ -84,6 +84,10 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	dataMux.HandleFunc("GET /api/data/{shape}", handleGetShapeData(sqldb))
 	mux.Handle("/api/data/", dataMux)
 
+	// /api/display/{slug} -- the display renderer's own layout fetch, no
+	// auth for the same reason as /api/data above.
+	mux.HandleFunc("GET /api/display/{slug}", handleGetDisplayLayout(sqldb))
+
 	// /api/clients/* -- dedicated client app registration/polling, no
 	// auth (clients are admin-approved). Handlers land in issue #29.
 	clientsMux := http.NewServeMux()
@@ -93,7 +97,7 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	// -- is the built frontend. Both are client-side routed (react-router),
 	// so any path without a matching static file falls back to
 	// index.html. /display/{slug} itself just renders the SPA shell here;
-	// the display's actual layout comes from a data API added in #18/#23.
+	// the display's actual layout comes from GET /api/display/{slug} above.
 	mux.Handle("/", newSPAHandler(staticDir))
 
 	return withLogging(withCORS(corsOrigins)(mux))

@@ -215,7 +215,7 @@ additionally cascade from `calendars`/`task_lists`.
 CRUD for all four tables above is built (see [REST API Routes](#rest-api-routes)
 below), and so is an admin UI to manage all of it, including a
 drag-and-drop Designer for cards; see
-[Display Hierarchy](#display-hierarchy-designer-built-display-side-rendering-planned)
+[Display Hierarchy](#display-hierarchy-built-end-to-end)
 and [Theme Cascade](#theme-cascade-editor-built-display-side-application-planned).
 The one thing that still doesn't render any of this is the display
 frontend itself (`/display/{slug}`).
@@ -260,6 +260,7 @@ All routes below are wired in `internal/api/router.go`.
 | `GET`/`POST /api/admin/screens/{id}/cards` | JWT | List / create cards on a screen |
 | `PUT`/`DELETE /api/admin/cards/{id}` | JWT | Update / remove a card |
 | `GET /api/data/{shape}` | none (LAN-facing, like the display itself) | Typed rows for a data shape, optionally filtered |
+| `GET /api/display/{slug}` | none (LAN-facing, like the display itself) | A display's own fields, resolved theme tokens, and every screen with its cards, in one call -- see [Display Hierarchy](#display-hierarchy-built-end-to-end) |
 
 `requireAuth` (`internal/api/middleware.go`) guards every `/api/admin/*`
 route except setup/login behind a `Bearer <jwt>` header — unless
@@ -269,9 +270,8 @@ startup if it's on).
 
 Everything else — `/admin`, `/display/{slug}`, and their static assets —
 falls through to the built frontend's `index.html` (client-side routed
-via react-router). `/display/{slug}` currently just renders an
-unstyled placeholder (`DisplayApp.tsx`); there's no display-config API
-for it to read yet.
+via react-router). `/display/{slug}` renders the real grid engine now
+(#23), reading its layout from `GET /api/display/{slug}` above.
 
 ### Planned
 
@@ -284,7 +284,7 @@ routes above already do (see [Divergence](#divergence-from-the-original-proposal
 
 ---
 
-## Display Hierarchy (Designer built; display-side rendering planned)
+## Display Hierarchy (Built end-to-end)
 
 The `displays`/`screens`/`cards` tables and their full admin CRUD API
 exist (see [SQLite Schema](#sqlite-schema) and [REST API Routes](#rest-api-routes)
@@ -297,11 +297,8 @@ Each screen's "Design" button opens `DesignerPage.tsx` -- a drag-and-drop
 grid editor (built on `react-grid-layout`) for placing, moving, resizing,
 and configuring cards, described below.
 
-What's still planned: the display frontend actually *reading* any of
-this to render a live grid -- `/display/{slug}` is still just a
-placeholder (`DisplayApp.tsx`) with no data fetch of its own -- and real
-UI plugin components for a card to render (see [Designer palette](#the-designer)
-below). Lands with #23.
+`/display/{slug}` now renders the real thing (#23) -- see
+[The Display Renderer](#the-display-renderer) below.
 
 ```
 Display   "Kitchen"  --  /display/kitchen
@@ -330,7 +327,7 @@ Display   "Kitchen"  --  /display/kitchen
   nullable, `ON DELETE SET NULL`), and an optional `theme_override`.
 - **UI plugin**: the React component rendered inside a card, reading one
   data shape. Two exist (`mullet-weather-current`, `mullet-weather-forecast`
-  — see [UI Plugins](#ui-plugins-two-built-no-consumer-yet) below); the
+  — see [UI Plugins](#ui-plugins-two-built-rendered-live-on-the-display) below); the
   rest implied by the plugins above are still to be built.
 
 ### The Designer
@@ -356,11 +353,12 @@ shapes a compiled-in data plugin can actually produce today (`clock`,
 `mullet-weather-current`, `mullet-weather-forecast`, `calendar-agenda`).
 A placed card
 still renders as a generic labeled box (widget name + data source), not
-real widget content, even for the two UI plugins that now exist --
-wiring the Designer (or a live display) up to actually render them is
-issue #23's job, not this one's.
+real widget content, even for the two UI plugins that now exist -- the
+Designer's own palette-drag placeholder cards were intentionally left
+as-is (#23 wired up the live display, not the editor's own preview; see
+[Divergence](#divergence-from-the-original-proposal)).
 
-### UI Plugins (Two built, no consumer yet)
+### UI Plugins (Two built, rendered live on the display)
 
 `web/src/plugins/` holds real UI plugin implementations, each in its own
 folder per `UIPlugin` (`web/src/shared/types/plugin.ts`): an `id`,
@@ -405,16 +403,53 @@ actually trust regardless of which data plugin produced the row (see
 `web/src/plugins/shared/conditionIcons.ts`).
 
 `web/src/plugins/registry.ts` lists every built UI plugin (mirrors
-`internal/plugins/data/registry.go`'s pattern on the Go side), for
-whatever eventually looks up "which component renders `ui_plugin_id`
-X" -- nothing does yet. Until #23 builds that consumer, these two
-components are verified only by direct testing against the real API,
-not by anything in the running app.
+`internal/plugins/data/registry.go`'s pattern on the Go side); `getUIPlugin(id)`
+is now actually called, by `DisplayCard` (`web/src/display/DisplayCard.tsx`)
+-- see [The Display Renderer](#the-display-renderer) below.
 
 `shapes.WeatherCurrent` gained a `wind_speed` column (migration
 `007_weather_wind_speed.sql`) to back the wind reading -- it didn't
 exist before `mullet-weather-current` needed to display it. Both weather data
 plugins (openweathermap, open-meteo) were updated to populate it.
+
+### The Display Renderer
+
+`DisplayApp.tsx` (`/display/{slug}`) is the full-screen kiosk view: it
+fetches `GET /api/display/{slug}` (`useDisplayLayout.ts`), re-polling
+every 5 minutes so a layout edit made in the admin UI eventually shows
+up without a manual reload, and renders whichever screen is currently
+active in a plain CSS Grid (`ScreenGrid.tsx`) -- the same `x`/`y`/`w`/`h`
+coordinates the Designer's `react-grid-layout` grid uses for editing,
+just laid out read-only instead of drag-and-drop. A display with more
+than one screen rotates through them on `rotation_seconds` (a plain
+`setInterval`, index clamped rather than reset-via-effect if an admin
+edit shrinks the screen list mid-rotation).
+
+Each card resolves its `ui_plugin_id` against the UI plugin registry
+(`DisplayCard.tsx`); an ID with no match (a stale reference to a removed
+or renamed plugin) renders a small placeholder instead of crashing the
+whole display. A matched card polls its own data independently
+(`useShapeData.ts`, `GET /api/data/{shape}?plugin={instance}`, every 60s)
+and merges the card's optional `theme_override` onto the display's theme
+before rendering, the same shallow-merge shape the Designer's card
+settings panel already writes (see [Theme Cascade](#theme-cascade-editor-built-display-side-application-planned)).
+
+`TopBar.tsx` and `BottomBar.tsx` render when their respective
+`show_top_bar`/`show_bottom_bar` flags are set: the top bar is a live
+clock plus, if any `weather_current` data exists anywhere on the server,
+a compact condition/temp summary (not tied to a specific screen or
+card, so it stays visible across rotation); the bottom bar shows
+connection status and, with more than one screen, a rotation dot
+indicator. Neither bar reads a per-display "which data source" setting
+yet -- see [Divergence](#divergence-from-the-original-proposal).
+
+`ConnectOverlay.tsx` covers three states from `useDisplayLayout`: a
+blocking full-screen "Connecting…" before any layout has ever loaded,
+"No display found" for an unknown slug (a real `404`, not a network
+failure), and a translucent "Reconnecting…" banner over the
+last-known layout once a previously working display goes unreachable --
+a display never blanks to a bare error page once it's shown real
+content.
 
 ---
 
@@ -628,12 +663,22 @@ noted here so that doc's specifics aren't taken as current fact.
   them off per display. Added as plain booleans (default on) rather
   than folding them into `theme_id`'s JSON, since they're structural
   (whether a zone renders) rather than a visual token.
-- **The Designer's palette** (#20) isn't backed by a UI plugin registry
-  the proposal implied would exist by this point -- there still isn't
-  one (no UI plugins are built yet at all). It's a hardcoded list in
-  `DesignerPage.tsx` scoped to shapes a compiled-in data plugin can
-  actually produce, and a placed card renders as a generic labeled
-  placeholder, not real widget content. See [The Designer](#the-designer).
+- **The Designer's palette** (#20) isn't backed by the UI plugin registry
+  that now exists (`web/src/plugins/registry.ts`, #22/#23) -- it's still
+  a hardcoded list in `DesignerPage.tsx`, and a placed card still renders
+  as a generic labeled placeholder there, not real widget content, even
+  though the live display (#23) renders the same card for real. Wiring
+  the editor's own preview up to the registry is future work, not part
+  of what #23 scoped (a live display, not the Designer). See
+  [The Designer](#the-designer).
+- **The top bar's weather summary** (#23) reads whichever
+  `weather_current` row the API returns first rather than a per-display
+  "which data source" setting the proposal's Grid System diagram didn't
+  specify either way -- fine with one weather instance configured,
+  ambiguous with more than one. **The bottom bar's "alerts"** half was
+  dropped entirely: no shape carries alert-style events yet, so it
+  currently shows connection status only. See
+  [The Display Renderer](#the-display-renderer).
 - **The theme editor's live preview** (#21) is a standalone page with
   its own generic 3-card mockup, not the proposal's description of a
   preview "on the grid editor" (i.e. live-editing a theme while looking

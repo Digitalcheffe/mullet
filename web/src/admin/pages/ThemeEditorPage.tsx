@@ -2,7 +2,7 @@ import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApiFetch } from '../auth/useApiFetch';
 import ThemeTokenFields from '../components/ThemeTokenFields';
-import { defaultTheme, type ThemeTokens } from '../../shared/themes/tokens';
+import { backgroundCSS, defaultTheme, type ThemeTokens } from '../../shared/themes/tokens';
 import './ThemeEditorPage.css';
 
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
@@ -11,11 +11,8 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
 }
 
 function previewStyles(tokens: ThemeTokens) {
-  const background =
-    tokens.background.type === 'image' ? `center/cover no-repeat url(${tokens.background.value})` : tokens.background.value;
-
   const container: CSSProperties = {
-    background,
+    background: backgroundCSS(tokens.background),
     borderRadius: '16px',
     padding: '24px',
     display: 'flex',

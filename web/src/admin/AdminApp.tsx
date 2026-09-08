@@ -11,6 +11,8 @@ import LoginPage from './pages/LoginPage';
 import PluginsPage from './pages/PluginsPage';
 import SettingsPage from './pages/SettingsPage';
 import SetupWizard from './pages/SetupWizard';
+import ThemeEditorPage from './pages/ThemeEditorPage';
+import ThemesPage from './pages/ThemesPage';
 
 export default function AdminApp() {
   return (
@@ -58,6 +60,8 @@ function AdminShell() {
         <Route path="plugins" element={<PluginsPage />} />
         <Route path="displays" element={<DisplaysPage />} />
         <Route path="displays/:displayId/screens/:screenId/design" element={<DesignerPage />} />
+        <Route path="themes" element={<ThemesPage />} />
+        <Route path="themes/:themeId" element={<ThemeEditorPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

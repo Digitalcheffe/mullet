@@ -9,7 +9,10 @@ import (
 )
 
 func TestThemeCRUDEndpoints(t *testing.T) {
-	router, _ := newTestRouter(t, nil)
+	router, sqldb := newTestRouter(t, nil)
+	if _, err := sqldb.Exec(`DELETE FROM themes`); err != nil {
+		t.Fatalf("clearing seeded themes: %v", err)
+	}
 
 	body, _ := json.Marshal(themeRequest{Name: "Glass Dark", Tokens: json.RawMessage(`{"accentColor":"#4f9dff"}`), IsDefault: true})
 	rec := httptest.NewRecorder()
@@ -33,6 +36,17 @@ func TestThemeCRUDEndpoints(t *testing.T) {
 		t.Fatalf("theme list has %d entries, want 1", len(list))
 	}
 
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/themes/"+strconv.Itoa(created.ID), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var fetched themeResponse
+	json.Unmarshal(rec.Body.Bytes(), &fetched)
+	if fetched.ID != created.ID || fetched.Name != "Glass Dark" {
+		t.Errorf("fetched = %+v, unexpected values", fetched)
+	}
+
 	updateBody, _ := json.Marshal(themeRequest{Name: "Glass Light", Tokens: json.RawMessage(`{}`), IsDefault: false})
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/themes/"+strconv.Itoa(created.ID), updateBody))
@@ -49,6 +63,16 @@ func TestThemeCRUDEndpoints(t *testing.T) {
 	router.ServeHTTP(rec, authedRequest(t, http.MethodDelete, "/api/admin/themes/"+strconv.Itoa(created.ID), nil))
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("delete status = %d, want 204 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetThemeMissingReturns404(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/themes/9999", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
 	}
 }
 
@@ -436,6 +460,7 @@ func TestDisplayHierarchyEndpointsRequireAuth(t *testing.T) {
 
 	for _, req := range []*http.Request{
 		httptest.NewRequest(http.MethodGet, "/api/admin/themes", nil),
+		httptest.NewRequest(http.MethodGet, "/api/admin/themes/1", nil),
 		httptest.NewRequest(http.MethodGet, "/api/admin/displays", nil),
 		httptest.NewRequest(http.MethodGet, "/api/admin/displays/1/screens", nil),
 		httptest.NewRequest(http.MethodGet, "/api/admin/screens/1", nil),

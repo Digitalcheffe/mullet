@@ -4,6 +4,8 @@ import ReactGridLayout, { useContainerWidth, type Layout, type LayoutItem } from
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useApiFetch } from '../auth/useApiFetch';
+import ThemeTokenFields from '../components/ThemeTokenFields';
+import type { ThemeTokens } from '../../shared/themes/tokens';
 import './DesignerPage.css';
 
 interface Screen {
@@ -25,7 +27,7 @@ interface Card {
   w: number;
   h: number;
   config: Record<string, unknown>;
-  theme_override?: Record<string, unknown>;
+  theme_override?: Partial<ThemeTokens>;
 }
 
 interface PluginManifest {
@@ -183,7 +185,7 @@ export default function DesignerPage() {
 
   async function handleSaveCardSettings(
     card: Card,
-    values: { data_plugin_instance_id: number | null; config: unknown; theme_override: unknown },
+    values: { data_plugin_instance_id: number | null; config: unknown; theme_override: Partial<ThemeTokens> | null },
   ) {
     const res = await apiFetch(`/api/admin/cards/${card.id}`, {
       method: 'PUT',
@@ -302,14 +304,20 @@ interface CardSettingsPanelProps {
   paletteItem: PaletteItem | undefined;
   instances: PluginInstance[];
   manifests: PluginManifest[];
-  onSave: (values: { data_plugin_instance_id: number | null; config: unknown; theme_override: unknown }) => Promise<void>;
+  onSave: (values: { data_plugin_instance_id: number | null; config: unknown; theme_override: Partial<ThemeTokens> | null }) => Promise<void>;
   onCancel: () => void;
 }
+
+// Card-level overrides stay narrow by design (see architecture.md
+// "Theme Cascade"): a card can nudge its own background and accent, not
+// take over the whole display's look (font, spacing, etc.).
+const CARD_OVERRIDE_FIELDS: (keyof ThemeTokens)[] = ['cardBackground', 'accentColor', 'opacity'];
 
 function CardSettingsPanel({ card, paletteItem, instances, manifests, onSave, onCancel }: CardSettingsPanelProps) {
   const [dataPluginInstanceId, setDataPluginInstanceId] = useState<number | null>(card.data_plugin_instance_id ?? null);
   const [configText, setConfigText] = useState(JSON.stringify(card.config ?? {}, null, 2));
-  const [themeOverrideText, setThemeOverrideText] = useState(card.theme_override ? JSON.stringify(card.theme_override, null, 2) : '');
+  const [overrideEnabled, setOverrideEnabled] = useState(card.theme_override != null);
+  const [themeOverride, setThemeOverride] = useState<Partial<ThemeTokens>>(card.theme_override ?? {});
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -333,19 +341,13 @@ function CardSettingsPanel({ card, paletteItem, instances, manifests, onSave, on
       }
     }
 
-    let themeOverride: unknown = null;
-    if (themeOverrideText.trim() !== '') {
-      try {
-        themeOverride = JSON.parse(themeOverrideText);
-      } catch {
-        setError('Theme override must be valid JSON');
-        return;
-      }
-    }
-
     setSubmitting(true);
     try {
-      await onSave({ data_plugin_instance_id: dataPluginInstanceId, config, theme_override: themeOverride });
+      await onSave({
+        data_plugin_instance_id: dataPluginInstanceId,
+        config,
+        theme_override: overrideEnabled ? themeOverride : null,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
     } finally {
@@ -389,16 +391,13 @@ function CardSettingsPanel({ card, paletteItem, instances, manifests, onSave, on
         <textarea rows={5} value={configText} onChange={(e) => setConfigText(e.target.value)} spellCheck={false} />
       </label>
 
-      <label className="field">
-        <span className="kicker">Theme override (JSON, optional)</span>
-        <textarea
-          rows={4}
-          value={themeOverrideText}
-          onChange={(e) => setThemeOverrideText(e.target.value)}
-          placeholder="{}"
-          spellCheck={false}
-        />
+      <label className="toggle-row">
+        <span>Override theme for this card</span>
+        <input type="checkbox" checked={overrideEnabled} onChange={(e) => setOverrideEnabled(e.target.checked)} />
       </label>
+      {overrideEnabled && (
+        <ThemeTokenFields values={themeOverride} onChange={(v) => setThemeOverride((prev) => ({ ...prev, ...v }))} fields={CARD_OVERRIDE_FIELDS} />
+      )}
 
       <div className="manifest-form-actions">
         <button type="button" className="btn-secondary" onClick={onCancel}>

@@ -287,7 +287,14 @@ export default function DisplaysPage() {
               themes={themes}
               initialValues={
                 displayPanel.mode === 'add'
-                  ? { name: '', slug: '', theme_id: null, rotation_seconds: 30, show_top_bar: true, show_bottom_bar: true }
+                  ? {
+                      name: '',
+                      slug: '',
+                      theme_id: themes.find((t) => t.is_default)?.id ?? null,
+                      rotation_seconds: 30,
+                      show_top_bar: true,
+                      show_bottom_bar: true,
+                    }
                   : {
                       name: displayPanel.display.name,
                       slug: displayPanel.display.slug,

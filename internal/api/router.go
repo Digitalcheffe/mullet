@@ -56,6 +56,7 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 
 	adminMux.HandleFunc("GET /api/admin/themes", handleListThemes(sqldb))
 	adminMux.HandleFunc("POST /api/admin/themes", handleCreateTheme(sqldb))
+	adminMux.HandleFunc("GET /api/admin/themes/{id}", handleGetTheme(sqldb))
 	adminMux.HandleFunc("PUT /api/admin/themes/{id}", handleUpdateTheme(sqldb))
 	adminMux.HandleFunc("DELETE /api/admin/themes/{id}", handleDeleteTheme(sqldb))
 

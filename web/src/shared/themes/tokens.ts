@@ -24,5 +24,5 @@ export const defaultTheme: ThemeTokens = {
   fontSize: '16px',
   borderRadius: '12px',
   opacity: 1,
-  blur: '0px',
+  blur: '16px',
 };

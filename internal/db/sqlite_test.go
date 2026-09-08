@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 )
@@ -54,8 +55,43 @@ func TestOpenAndMigrate(t *testing.T) {
 	if err := sqldb.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("counting schema_migrations: %v", err)
 	}
-	if count != 5 {
-		t.Errorf("schema_migrations has %d rows, want 5", count)
+	if count != 6 {
+		t.Errorf("schema_migrations has %d rows, want 6", count)
+	}
+}
+
+func TestMigrateSeedsDefaultTheme(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "mullet.db")
+
+	sqldb, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer sqldb.Close()
+
+	if err := Migrate(sqldb); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	themes, err := ListThemes(sqldb)
+	if err != nil {
+		t.Fatalf("ListThemes: %v", err)
+	}
+	if len(themes) != 1 {
+		t.Fatalf("themes = %+v, want 1 seeded theme", themes)
+	}
+	if themes[0].Name != "Dark Glass" || !themes[0].IsDefault {
+		t.Errorf("seeded theme = %+v, want (name=Dark Glass, is_default=true)", themes[0])
+	}
+
+	var tokens map[string]any
+	if err := json.Unmarshal([]byte(themes[0].Tokens), &tokens); err != nil {
+		t.Fatalf("seeded theme.Tokens is not valid JSON: %v", err)
+	}
+	for _, key := range []string{"background", "cardBackground", "cardBorder", "textColor", "accentColor", "fontFamily", "fontSize", "borderRadius", "opacity", "blur"} {
+		if _, ok := tokens[key]; !ok {
+			t.Errorf("seeded theme.Tokens missing key %q", key)
+		}
 	}
 }
 

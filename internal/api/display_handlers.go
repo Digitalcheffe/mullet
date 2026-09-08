@@ -72,6 +72,27 @@ func toThemeResponse(t db.Theme) themeResponse {
 	return themeResponse{ID: t.ID, Name: t.Name, Tokens: json.RawMessage(tokens), IsDefault: t.IsDefault}
 }
 
+func handleGetTheme(sqldb *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(r.PathValue("id"))
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		t, err := db.GetTheme(sqldb, id)
+		if errors.Is(err, db.ErrNotFound) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(toThemeResponse(t))
+	}
+}
+
 func handleListThemes(sqldb *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		themes, err := db.ListThemes(sqldb)

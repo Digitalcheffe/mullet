@@ -203,7 +203,7 @@ one.
 | `calendars` | Discovered calendars, one row per `(plugin_instance_id, external_id)` — see [entity discovery](#write-path) |
 | `task_lists` | Same shape as `calendars`, for the `tasks` contract (no writer uses this yet) |
 | `shape_events`, `shape_tasks`, `shape_weather_current`, `shape_weather_forecast`, `shape_home_devices`, `shape_packages`, `shape_infrastructure`, `shape_media_status` | One table per data shape, typed columns matching its Go struct — no JSON blobs. See `internal/db/migrations/002_shapes.sql`. |
-| `themes` | Named JSON token sets (`internal/db/migrations/004_displays.sql`). A display references one as its base theme; a card can override it via `cards.theme_override` |
+| `themes` | Named JSON token sets (`internal/db/migrations/004_displays.sql`). A display references one as its base theme; a card can override it via `cards.theme_override`. Seeded with one row ("Dark Glass", `is_default`) by `006_seed_default_theme.sql` |
 | `displays` | A physical output routed at `/display/{slug}` (unique). `theme_id` nullable FK to `themes`; `rotation_seconds` how often it rotates through its screens; `show_top_bar`/`show_bottom_bar` toggle the fixed clock/weather and now-playing/alerts bars |
 | `screens` | A page within a display (`ON DELETE CASCADE` from `displays`). Owns its own grid (`columns`, `row_height`, `gap`, all in pixels except `columns`) rather than inheriting one from its display; `position` orders rotation |
 | `cards` | A positioned UI plugin on a screen's grid (`ON DELETE CASCADE` from `screens`). `x`/`y`/`w`/`h` are grid units. `data_plugin_instance_id` (nullable, `ON DELETE SET NULL`) is which configured plugin instance it reads from — nullable because a card's UI plugin might need no data (clock) or the admin hasn't wired one up yet; `SET NULL` rather than cascade so deleting an unrelated data plugin instance doesn't silently delete a card |
@@ -216,7 +216,7 @@ CRUD for all four tables above is built (see [REST API Routes](#rest-api-routes)
 below), and so is an admin UI to manage all of it, including a
 drag-and-drop Designer for cards; see
 [Display Hierarchy](#display-hierarchy-designer-built-display-side-rendering-planned)
-and [Theme Cascade](#theme-cascade-schema-built-application-planned).
+and [Theme Cascade](#theme-cascade-editor-built-display-side-application-planned).
 The one thing that still doesn't render any of this is the display
 frontend itself (`/display/{slug}`).
 
@@ -252,11 +252,11 @@ All routes below are wired in `internal/api/router.go`.
 | `PUT`/`DELETE /api/admin/plugins/instances/{id}` | JWT | Update / remove an instance |
 | `POST /api/admin/plugins/instances/{id}/test` | JWT | Run one configure+fetch cycle now, report success/error |
 | `GET`/`POST /api/admin/themes` | JWT | List / create themes |
-| `PUT`/`DELETE /api/admin/themes/{id}` | JWT | Update / remove a theme (`DELETE` is `409` if a display still uses it) |
+| `GET`/`PUT`/`DELETE /api/admin/themes/{id}` | JWT | Get / update / remove a theme (`DELETE` is `409` if a display still uses it) |
 | `GET`/`POST /api/admin/displays` | JWT | List / create displays |
 | `PUT`/`DELETE /api/admin/displays/{id}` | JWT | Update / remove a display (delete cascades to its screens and cards) |
 | `GET`/`POST /api/admin/displays/{id}/screens` | JWT | List / create screens on a display |
-| `PUT`/`DELETE /api/admin/screens/{id}` | JWT | Update / remove a screen (delete cascades to its cards) |
+| `GET`/`PUT`/`DELETE /api/admin/screens/{id}` | JWT | Get / update / remove a screen (delete cascades to its cards) |
 | `GET`/`POST /api/admin/screens/{id}/cards` | JWT | List / create cards on a screen |
 | `PUT`/`DELETE /api/admin/cards/{id}` | JWT | Update / remove a card |
 | `GET /api/data/{shape}` | none (LAN-facing, like the display itself) | Typed rows for a data shape, optionally filtered |
@@ -344,7 +344,10 @@ compactor keeps cards from ever overlapping, reflowing instead of
 allowing a collision. A card's gear icon opens a settings panel: data
 source (a dropdown of configured plugin instances, filtered to ones
 whose plugin manifest lists the shape this card type reads), a raw JSON
-config editor, and an optional raw JSON theme override.
+config editor, and an optional theme override -- a toggle plus the
+narrow `ThemeTokenFields` set described in
+[Theme Cascade](#theme-cascade-editor-built-display-side-application-planned)
+(#21), not raw JSON.
 
 The palette itself is **not** driven by a server-side UI plugin
 registry — none exists (see the UI plugin bullet above) — it's a small
@@ -356,39 +359,56 @@ content, until issue #23 builds actual UI plugin components.
 
 ---
 
-## Theme Cascade (Schema built, application planned)
+## Theme Cascade (Editor built; display-side application planned)
 
-The `themes` table and its admin CRUD API exist (a theme is just a
-name plus an opaque JSON `tokens` blob and an `is_default` flag — see
-[SQLite Schema](#sqlite-schema)/[REST API Routes](#rest-api-routes)); `displays.theme_id`
-and `cards.theme_override` are wired up to reference it, and
-`/admin/displays` (#19) lets an admin *pick* an existing theme for a
-display from a dropdown. What's *not* built yet: an admin UI for
-actually creating/editing a theme's tokens (the "Themes" nav item still
-shows "Soon"), and anything on the display side that actually reads a
-display's theme and applies it — that's #23.
+The `themes` table and its admin CRUD API exist (a theme is just a name
+plus a `tokens` JSON blob and an `is_default` flag — see
+[SQLite Schema](#sqlite-schema)/[REST API Routes](#rest-api-routes)),
+and so does a full editor: `/admin/themes` (`ThemesPage.tsx`) lists
+themes with a swatch preview and lets an admin create/edit/delete them;
+`/admin/themes/{id}` (`/new` for a new one) is `ThemeEditorPage.tsx` --
+a field editor for every token (background type/value, card background/
+border, text/accent color, font family/size, border radius, opacity,
+blur) alongside a live preview panel that re-renders a small sample
+card grid on every keystroke, using the same styles the eventual display
+renderer will need. `/admin/displays` (#19) lets an admin *pick* a theme
+for a display from a dropdown, defaulting to whichever theme has
+`is_default` set when adding a new display. The Designer's card settings
+panel (#20) now edits `theme_override` through the same field-editor
+component, restricted to a narrow field set (see below) instead of the
+raw JSON box it started with.
 
-The token **type** the `tokens`/`theme_override` JSON blobs are meant to
-hold already exists and is in use today, independent of the DB table:
-[`web/src/shared/themes/tokens.ts`](web/src/shared/themes/tokens.ts)
-defines `ThemeTokens` (background, card background/border, text/accent
-color, font, radius, opacity, blur) and a built-in `defaultTheme`,
-consumed via a `ThemeContext` (`useTheme.ts`). Nothing populates that
-context from the database yet — the display scaffold just uses the
-default. This same token shape is meant to back a separate, static
-admin-UI theme system (`web/src/admin/adminTheme.css`) that is *not*
-part of this cascade — that one styles the admin app itself and isn't
-DB-configurable.
+What's *still* not built: anything on the display side that actually
+*reads* a display's theme and its cards' overrides to render a live
+grid -- that's #23. The Designer's own card placeholders and the theme
+editor's preview both hand-roll their own styling from the token values
+directly; neither goes through a shared "apply a theme" renderer, because
+that renderer doesn't exist yet.
 
-Planned cascade, once something renders it: a **Display** sets a base
-theme (FK to `themes`); its **Screens'** cards inherit it by default; a
-**Card** can override specific tokens via `theme_override` (nullable —
-null means full inheritance, which is what `CreateCard`/`UpdateCard`
-store when it's omitted). Overrides are meant to be limited in scope
-(e.g. a card's own background opacity and accent color, not global font
-or spacing) to keep one display visually coherent — nothing enforces
-that limit at the API layer today; `theme_override` accepts any JSON
-object.
+The token **type** all of this reads and writes is a single shared
+source: [`web/src/shared/themes/tokens.ts`](web/src/shared/themes/tokens.ts)
+defines `ThemeTokens` and a built-in `defaultTheme`, consumed via a
+`ThemeContext` (`useTheme.ts`) on the display side (still unpopulated
+from the database) and via `ThemeTokenFields.tsx` (a component shared
+between the full theme editor and the card override editor) on the
+admin side. The bundled default theme ("Dark Glass", seeded by
+migration `006_seed_default_theme.sql`) uses these exact token values,
+so there's never a fresh install with zero themes to pick from. This
+same token shape also backs a separate, static admin-UI theme system
+(`web/src/admin/adminTheme.css`) that is *not* part of this cascade --
+that one styles the admin app itself and isn't DB-configurable.
+
+Cascade, once something renders it: a **Display** sets a base theme (FK
+to `themes`); its **Screens'** cards inherit it by default; a **Card**
+can override specific tokens via `theme_override` (nullable — null
+means full inheritance, which is what `CreateCard`/`UpdateCard` store
+when it's omitted). Overrides are deliberately narrow — the card
+settings panel only exposes `cardBackground`, `accentColor`, and
+`opacity` — so one card can't take over a display's whole look. That
+narrowing lives only in the frontend (`CARD_OVERRIDE_FIELDS` in
+`DesignerPage.tsx`); the API itself accepts a `theme_override` with any
+subset of token keys, same as it accepts any JSON object for a theme's
+full `tokens`.
 
 ---
 
@@ -555,6 +575,13 @@ noted here so that doc's specifics aren't taken as current fact.
   `DesignerPage.tsx` scoped to shapes a compiled-in data plugin can
   actually produce, and a placed card renders as a generic labeled
   placeholder, not real widget content. See [The Designer](#the-designer).
+- **The theme editor's live preview** (#21) is a standalone page with
+  its own generic 3-card mockup, not the proposal's description of a
+  preview "on the grid editor" (i.e. live-editing a theme while looking
+  at an actual screen's real cards). The GitHub issue that actually
+  scoped this work asked for "a live preview panel with sample card
+  grid," which is what got built -- simpler, and not dependent on the
+  Designer or a real screen existing yet.
 
 When you find another one of these while implementing an issue, add it
 here rather than silently leaving the proposal doc wrong.

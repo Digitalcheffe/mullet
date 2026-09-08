@@ -1,0 +1,145 @@
+.designer-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.designer-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.designer-header h1 {
+  font: 700 22px var(--font-heading);
+}
+
+.designer-subtitle {
+  font: 500 11.5px var(--font-body);
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.designer-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.designer-palette {
+  width: 180px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+}
+
+.designer-palette h2 {
+  font: 700 13px var(--font-heading);
+}
+
+.palette-help {
+  font: 500 11px var(--font-body);
+  color: var(--ink-soft);
+  margin: -4px 0 4px;
+}
+
+.palette-item {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  font: 600 12.5px var(--font-body);
+  color: var(--ink);
+  cursor: grab;
+}
+.palette-item:active {
+  cursor: grabbing;
+}
+
+.designer-grid-wrap {
+  flex: 1;
+  min-width: 0;
+  min-height: 420px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-alt);
+}
+
+.designer-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  position: relative;
+  text-align: center;
+  padding: 8px;
+  box-sizing: border-box;
+  cursor: grab;
+}
+.designer-card:active {
+  cursor: grabbing;
+}
+
+.designer-card-label {
+  font: 700 12.5px var(--font-body);
+  color: var(--ink);
+}
+
+.designer-card-source {
+  font: 500 10.5px var(--font-body);
+  color: var(--ink-soft);
+}
+
+.card-settings-btn,
+.card-delete-btn {
+  position: absolute;
+  top: 4px;
+  width: 20px;
+  height: 20px;
+  line-height: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 11px;
+  cursor: pointer;
+}
+.card-settings-btn {
+  right: 28px;
+}
+.card-delete-btn {
+  right: 4px;
+  color: var(--error);
+}
+.card-settings-btn:hover,
+.card-delete-btn:hover {
+  background: var(--surface-alt);
+}
+
+.field textarea {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font: 500 12px var(--font-mono, monospace);
+  color: var(--ink);
+  background: var(--surface);
+  resize: vertical;
+}
+.field textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

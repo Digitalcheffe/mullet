@@ -231,6 +231,17 @@ func TestScreenCRUDEndpoints(t *testing.T) {
 		t.Fatalf("screen list has %d entries, want 1", len(list))
 	}
 
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/screens/"+strconv.Itoa(created.ID), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var fetched screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &fetched)
+	if fetched.ID != created.ID || fetched.Name != "Main" {
+		t.Errorf("fetched = %+v, unexpected values", fetched)
+	}
+
 	updateBody, _ := json.Marshal(screenRequest{Name: "Detail", Position: 1, Columns: 12, RowHeight: 50, Gap: 10})
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/screens/"+strconv.Itoa(created.ID), updateBody))
@@ -275,6 +286,16 @@ func TestCreateScreenUnknownDisplayReturns400(t *testing.T) {
 	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays/9999/screens", body))
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestGetScreenMissingReturns404(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/screens/9999", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
 	}
 }
 
@@ -417,6 +438,7 @@ func TestDisplayHierarchyEndpointsRequireAuth(t *testing.T) {
 		httptest.NewRequest(http.MethodGet, "/api/admin/themes", nil),
 		httptest.NewRequest(http.MethodGet, "/api/admin/displays", nil),
 		httptest.NewRequest(http.MethodGet, "/api/admin/displays/1/screens", nil),
+		httptest.NewRequest(http.MethodGet, "/api/admin/screens/1", nil),
 		httptest.NewRequest(http.MethodGet, "/api/admin/screens/1/cards", nil),
 	} {
 		rec := httptest.NewRecorder()

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { useApiFetch } from '../auth/useApiFetch';
 import './DisplaysPage.css';
 
@@ -262,6 +263,9 @@ export default function DisplaysPage() {
                       {s.columns} columns &middot; {s.row_height}px rows &middot; {s.gap}px gap
                     </div>
                   </div>
+                  <Link className="btn-primary" to={`/admin/displays/${s.display_id}/screens/${s.id}/design`}>
+                    Design
+                  </Link>
                   <button className="btn-secondary" onClick={() => setScreenPanel({ mode: 'edit', screen: s })}>
                     Edit
                   </button>

@@ -21,17 +21,20 @@ type ServerInfo struct {
 // signs and verifies admin session tokens; corsOrigins configures which
 // cross-origin callers may access the API (empty disables CORS headers);
 // staticDir is the built frontend (web/dist) served for /admin, /display,
-// and everything else not matched below.
-func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info ServerInfo, staticDir string) http.Handler {
+// and everything else not matched below. authDisabled skips setup/login
+// and lets every /api/admin/* request through unauthenticated -- local
+// dev only, never set this in a real deployment.
+func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info ServerInfo, staticDir string, authDisabled bool) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 
 	// /api/admin/* -- login and first-run setup are public; everything
-	// else requires a valid JWT. Real admin endpoints (users, plugins,
-	// displays, ...) are added in later issues; handleWhoAmI exercises
-	// the auth guard end-to-end in the meantime.
+	// else requires a valid JWT (unless authDisabled). Real admin
+	// endpoints (users, plugins, displays, ...) are added in later
+	// issues; handleWhoAmI exercises the auth guard end-to-end in the
+	// meantime.
 	mux.HandleFunc("POST /api/admin/login", handleLogin(sqldb, jwtSecret))
-	mux.HandleFunc("GET /api/admin/setup", handleSetupStatus(sqldb))
+	mux.HandleFunc("GET /api/admin/setup", handleSetupStatus(sqldb, authDisabled))
 	mux.HandleFunc("POST /api/admin/setup", handleSetup(sqldb, jwtSecret))
 
 	adminMux := http.NewServeMux()
@@ -39,7 +42,7 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	adminMux.HandleFunc("GET /api/admin/dashboard", handleDashboard(sqldb, info))
 	adminMux.HandleFunc("GET /api/admin/settings", handleGetSettings(sqldb, info))
 	adminMux.HandleFunc("PUT /api/admin/settings", handlePutSettings(sqldb))
-	mux.Handle("/api/admin/", requireAuth(jwtSecret)(adminMux))
+	mux.Handle("/api/admin/", requireAuth(jwtSecret, authDisabled)(adminMux))
 
 	// /api/data/* -- served to the display frontend from typed shape
 	// tables. Handlers land in issue #14.

@@ -12,4 +12,7 @@ services:
       # Secrets for plugins that reference ${VAR} in their setup fields
       - OWM_API_KEY=${OWM_API_KEY:-}
       - HA_TOKEN=${HA_TOKEN:-}
+      # Local dev only: skips setup/login entirely. Never set this in a
+      # real deployment.
+      # - AUTH_DISABLED=true
     restart: unless-stopped

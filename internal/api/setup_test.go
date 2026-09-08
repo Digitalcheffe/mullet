@@ -25,7 +25,7 @@ func newUnseededTestRouter(t *testing.T) http.Handler {
 		t.Fatalf("Migrate: %v", err)
 	}
 
-	return NewRouter(sqldb, []byte(testJWTSecret), nil, testServerInfo(), t.TempDir())
+	return NewRouter(sqldb, []byte(testJWTSecret), nil, testServerInfo(), t.TempDir(), false)
 }
 
 func TestSetupStatus(t *testing.T) {

@@ -50,7 +50,7 @@ func newTestUserDB(t *testing.T) *sql.DB {
 func newTestRouter(t *testing.T, corsOrigins []string) (http.Handler, *sql.DB) {
 	t.Helper()
 	sqldb := newTestUserDB(t)
-	router := NewRouter(sqldb, []byte(testJWTSecret), corsOrigins, testServerInfo(), t.TempDir())
+	router := NewRouter(sqldb, []byte(testJWTSecret), corsOrigins, testServerInfo(), t.TempDir(), false)
 	return router, sqldb
 }
 

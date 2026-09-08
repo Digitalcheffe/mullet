@@ -19,20 +19,28 @@ type loginResponse struct {
 }
 
 type setupStatusResponse struct {
-	Required bool `json:"required"`
+	Required     bool `json:"required"`
+	AuthDisabled bool `json:"auth_disabled"`
 }
 
 // handleSetupStatus reports whether first-run setup (creating the initial
-// admin account) still needs to happen.
-func handleSetupStatus(sqldb *sql.DB) http.HandlerFunc {
+// admin account) still needs to happen. With authDisabled, it always
+// reports setup as not required -- there's no session to gate.
+func handleSetupStatus(sqldb *sql.DB, authDisabled bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if authDisabled {
+			json.NewEncoder(w).Encode(setupStatusResponse{Required: false, AuthDisabled: true})
+			return
+		}
+
 		count, err := userCount(sqldb)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(setupStatusResponse{Required: count == 0})
 	}
 }

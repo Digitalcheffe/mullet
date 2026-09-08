@@ -1,0 +1,37 @@
+.display-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  font-size: 1.1em;
+  flex-shrink: 0;
+}
+
+.tb-display-name {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.tb-clock {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.tb-time {
+  font-size: 1.3em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tb-date {
+  opacity: 0.7;
+  font-size: 0.85em;
+}
+
+.tb-weather {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}

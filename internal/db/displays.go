@@ -179,6 +179,20 @@ func GetDisplay(sqldb *sql.DB, id int) (Display, error) {
 	return d, nil
 }
 
+// GetDisplayBySlug returns one display by its routing slug (the
+// /display/{slug} path segment), or ErrNotFound.
+func GetDisplayBySlug(sqldb *sql.DB, slug string) (Display, error) {
+	row := sqldb.QueryRow(`SELECT `+displayColumns+` FROM displays WHERE slug = ?`, slug)
+	d, err := scanDisplay(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Display{}, ErrNotFound
+	}
+	if err != nil {
+		return Display{}, fmt.Errorf("getting display %q: %w", slug, err)
+	}
+	return d, nil
+}
+
 // CreateDisplay inserts a new display and returns its ID. Returns
 // ErrInUse if slug is already taken, or if themeID is set but doesn't
 // exist.

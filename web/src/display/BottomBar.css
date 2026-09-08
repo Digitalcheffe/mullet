@@ -1,0 +1,42 @@
+.display-bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 20px;
+  font-size: 0.85em;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.bb-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bb-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.bb-status-ok .bb-status-dot {
+  background: #2ecc71;
+}
+
+.bb-status-bad .bb-status-dot {
+  background: #e67e22;
+}
+
+.bb-screen-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.bb-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+}

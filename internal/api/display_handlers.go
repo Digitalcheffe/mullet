@@ -698,3 +698,73 @@ func writeCard(w http.ResponseWriter, sqldb *sql.DB, id int, status int) {
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(toCardResponse(c))
 }
+
+// ---- Display layout (public, no auth -- served to the display frontend
+// itself, like /api/data) ----
+
+type screenLayoutResponse struct {
+	screenResponse
+	Cards []cardResponse `json:"cards"`
+}
+
+type displayLayoutResponse struct {
+	displayResponse
+	Theme   json.RawMessage         `json:"theme,omitempty"`
+	Screens []screenLayoutResponse `json:"screens"`
+}
+
+// handleGetDisplayLayout serves GET /api/display/{slug}: everything the
+// display renderer needs for one display in a single request -- its own
+// fields, its theme's tokens (resolved from theme_id; omitted if unset,
+// letting the frontend fall back to its own built-in default so this
+// endpoint doesn't have to duplicate that fallback), and every screen
+// with its cards, in rotation order. No auth, same as /api/data -- a
+// display is LAN-facing kiosk hardware, not an admin.
+func handleGetDisplayLayout(sqldb *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		slug := r.PathValue("slug")
+		d, err := db.GetDisplayBySlug(sqldb, slug)
+		if errors.Is(err, db.ErrNotFound) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		resp := displayLayoutResponse{displayResponse: toDisplayResponse(d)}
+		if d.ThemeID != nil {
+			theme, err := db.GetTheme(sqldb, *d.ThemeID)
+			if err != nil && !errors.Is(err, db.ErrNotFound) {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			if err == nil {
+				resp.Theme = toThemeResponse(theme).Tokens
+			}
+		}
+
+		screens, err := db.ListScreensByDisplay(sqldb, d.ID)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		resp.Screens = make([]screenLayoutResponse, len(screens))
+		for i, s := range screens {
+			cards, err := db.ListCardsByScreen(sqldb, s.ID)
+			if err != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			cardResp := make([]cardResponse, len(cards))
+			for j, c := range cards {
+				cardResp[j] = toCardResponse(c)
+			}
+			resp.Screens[i] = screenLayoutResponse{screenResponse: toScreenResponse(s), Cards: cardResp}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}
+}

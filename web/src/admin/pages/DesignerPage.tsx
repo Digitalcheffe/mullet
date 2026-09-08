@@ -55,8 +55,8 @@ interface PaletteItem {
 
 const PALETTE: PaletteItem[] = [
   { uiPluginId: 'clock', label: 'Clock', dataShape: null },
-  { uiPluginId: 'weather-current', label: 'Weather (Current)', dataShape: 'weather_current' },
-  { uiPluginId: 'weather-forecast', label: 'Weather (Forecast)', dataShape: 'weather_forecast' },
+  { uiPluginId: 'mullet-weather-current', label: 'Weather (Current)', dataShape: 'weather_current' },
+  { uiPluginId: 'mullet-weather-forecast', label: 'Weather (Forecast)', dataShape: 'weather_forecast' },
   { uiPluginId: 'calendar-agenda', label: 'Calendar Agenda', dataShape: 'events' },
 ];
 

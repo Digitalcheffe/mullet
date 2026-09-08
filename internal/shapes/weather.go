@@ -14,6 +14,7 @@ type WeatherCurrent struct {
 	Low              *float64 `db:"low"`
 	Sunrise          *string  `db:"sunrise"`
 	Sunset           *string  `db:"sunset"`
+	WindSpeed        *float64 `db:"wind_speed"`
 }
 
 // WeatherForecast represents a single day's forecast.

@@ -212,7 +212,7 @@ func (p *Plugin) getForecast(ctx context.Context, lat, lon string) ([]byte, erro
 	params := url.Values{
 		"latitude":         {lat},
 		"longitude":        {lon},
-		"current":          {"temperature_2m,apparent_temperature,relative_humidity_2m,weather_code"},
+		"current":          {"temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m"},
 		"daily":            {"temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset"},
 		"timezone":         {"auto"},
 		"forecast_days":    {"5"},
@@ -256,6 +256,7 @@ type forecastResponse struct {
 		ApparentTemperature float64 `json:"apparent_temperature"`
 		RelativeHumidity    int     `json:"relative_humidity_2m"`
 		WeatherCode         int     `json:"weather_code"`
+		WindSpeed           float64 `json:"wind_speed_10m"`
 	} `json:"current"`
 	Daily struct {
 		Time                        []string  `json:"time"`
@@ -272,6 +273,7 @@ func (r forecastResponse) currentShape() shapes.WeatherCurrent {
 	condition, icon := conditionForCode(r.Current.WeatherCode)
 	feelsLike := r.Current.ApparentTemperature
 	humidity := r.Current.RelativeHumidity
+	windSpeed := r.Current.WindSpeed
 
 	current := shapes.WeatherCurrent{
 		ID:        "current",
@@ -280,6 +282,7 @@ func (r forecastResponse) currentShape() shapes.WeatherCurrent {
 		Condition: condition,
 		Icon:      icon,
 		Humidity:  &humidity,
+		WindSpeed: &windSpeed,
 	}
 
 	if len(r.Daily.TemperatureMax) > 0 {

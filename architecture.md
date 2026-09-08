@@ -213,9 +213,12 @@ Every shape table carries `plugin_instance_id` (`ON DELETE CASCADE` from
 additionally cascade from `calendars`/`task_lists`.
 
 CRUD for all four tables above is built (see [REST API Routes](#rest-api-routes)
-below) — this is the display *hierarchy's data layer*. Nothing renders
-it yet; see [Display Hierarchy](#display-hierarchy-displays-and-screens-built-card-designer-planned)
+below), and so is an admin UI to manage all of it, including a
+drag-and-drop Designer for cards; see
+[Display Hierarchy](#display-hierarchy-designer-built-display-side-rendering-planned)
 and [Theme Cascade](#theme-cascade-schema-built-application-planned).
+The one thing that still doesn't render any of this is the display
+frontend itself (`/display/{slug}`).
 
 ### Planned
 
@@ -281,20 +284,24 @@ routes above already do (see [Divergence](#divergence-from-the-original-proposal
 
 ---
 
-## Display Hierarchy (Displays and screens built, card Designer planned)
+## Display Hierarchy (Designer built; display-side rendering planned)
 
 The `displays`/`screens`/`cards` tables and their full admin CRUD API
 exist (see [SQLite Schema](#sqlite-schema) and [REST API Routes](#rest-api-routes)
-above), and so does an admin UI for the top two levels: `/admin/displays`
+above), and so does an admin UI for the whole hierarchy: `/admin/displays`
 (`DisplaysPage.tsx`) lists, creates, edits, and deletes displays (name,
-slug, theme, rotation interval, top/bottom bar toggles), and lets an
+slug, theme, rotation interval, top/bottom bar toggles) and lets an
 admin manage a display's screens inline -- add, edit, delete, and
 reorder (simple ▲/▼ buttons swapping `position`, not drag-and-drop).
-What's still planned: a visual card Designer (drag-and-drop placement
-onto a screen's grid -- today a card can only be created via the raw
-API) and the display frontend actually reading any of this to render a
-grid -- `/display/{slug}` is still just a placeholder (`DisplayApp.tsx`)
-with no data fetch of its own. Both land with #23.
+Each screen's "Design" button opens `DesignerPage.tsx` -- a drag-and-drop
+grid editor (built on `react-grid-layout`) for placing, moving, resizing,
+and configuring cards, described below.
+
+What's still planned: the display frontend actually *reading* any of
+this to render a live grid -- `/display/{slug}` is still just a
+placeholder (`DisplayApp.tsx`) with no data fetch of its own -- and real
+UI plugin components for a card to render (see [Designer palette](#the-designer)
+below). Lands with #23.
 
 ```
 Display   "Kitchen"  --  /display/kitchen
@@ -324,6 +331,28 @@ Display   "Kitchen"  --  /display/kitchen
 - **UI plugin**: the React component rendered inside a card, reading one
   data shape. None exist yet — the clock/weather/calendar-agenda widgets
   implied by the plugins above are all still to be built.
+
+### The Designer
+
+`DesignerPage.tsx` (`/admin/displays/{displayId}/screens/{screenId}/design`)
+renders one screen's cards on a `react-grid-layout` grid sized to that
+screen's `columns`/`row_height`/`gap`. Drag a palette entry onto the
+grid to create a card (`POST .../cards`); drag or resize an existing one
+(all 8 handles) to reposition it (`PUT .../cards/{id}`, fired on
+drag/resize *stop*, not on every intermediate frame); the grid's default
+compactor keeps cards from ever overlapping, reflowing instead of
+allowing a collision. A card's gear icon opens a settings panel: data
+source (a dropdown of configured plugin instances, filtered to ones
+whose plugin manifest lists the shape this card type reads), a raw JSON
+config editor, and an optional raw JSON theme override.
+
+The palette itself is **not** driven by a server-side UI plugin
+registry — none exists (see the UI plugin bullet above) — it's a small
+hardcoded list in `DesignerPage.tsx` scoped to shapes a compiled-in data
+plugin can actually produce today (`clock`, `weather-current`,
+`weather-forecast`, `calendar-agenda`). A placed card renders as a
+generic labeled box (widget name + data source), not real widget
+content, until issue #23 builds actual UI plugin components.
 
 ---
 
@@ -423,7 +452,11 @@ independent of whether the dedicated client ships.
   `arran4/golang-ical` + `teambition/rrule-go` for the ICS feed plugin's
   calendar parsing and RRULE recurrence expansion.
 - **Frontend**: React 19, TypeScript, Vite, `react-router-dom` v7. No
-  UI component library — hand-rolled CSS.
+  general UI component library — hand-rolled CSS. The one exception is
+  `react-grid-layout`, used specifically for the Designer's drag/resize/
+  collision-detection grid mechanics (`DesignerPage.tsx`) — reimplementing
+  that correctly by hand wasn't worth the risk for what a mature,
+  purpose-built library already does well.
 - **Storage**: SQLite, one file, schema-migrated on startup
   (`internal/db/migrations`, applied in order, tracked so each runs
   once).
@@ -516,6 +549,12 @@ noted here so that doc's specifics aren't taken as current fact.
   them off per display. Added as plain booleans (default on) rather
   than folding them into `theme_id`'s JSON, since they're structural
   (whether a zone renders) rather than a visual token.
+- **The Designer's palette** (#20) isn't backed by a UI plugin registry
+  the proposal implied would exist by this point -- there still isn't
+  one (no UI plugins are built yet at all). It's a hardcoded list in
+  `DesignerPage.tsx` scoped to shapes a compiled-in data plugin can
+  actually produce, and a placed card renders as a generic labeled
+  placeholder, not real widget content. See [The Designer](#the-designer).
 
 When you find another one of these while implementing an issue, add it
 here rather than silently leaving the proposal doc wrong.

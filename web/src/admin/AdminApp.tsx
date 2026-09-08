@@ -5,6 +5,7 @@ import './forms.css';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import AdminLayout from './layout/AdminLayout';
 import Dashboard from './pages/Dashboard';
+import DesignerPage from './pages/DesignerPage';
 import DisplaysPage from './pages/DisplaysPage';
 import LoginPage from './pages/LoginPage';
 import PluginsPage from './pages/PluginsPage';
@@ -56,6 +57,7 @@ function AdminShell() {
         <Route index element={<Dashboard />} />
         <Route path="plugins" element={<PluginsPage />} />
         <Route path="displays" element={<DisplaysPage />} />
+        <Route path="displays/:displayId/screens/:screenId/design" element={<DesignerPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

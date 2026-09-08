@@ -368,6 +368,27 @@ func screenDefaults(req screenRequest) (columns, rowHeight, gap int) {
 	return columns, rowHeight, gap
 }
 
+func handleGetScreen(sqldb *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(r.PathValue("id"))
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		s, err := db.GetScreen(sqldb, id)
+		if errors.Is(err, db.ErrNotFound) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(toScreenResponse(s))
+	}
+}
+
 func handleListScreens(sqldb *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		displayID, err := strconv.Atoi(r.PathValue("id"))

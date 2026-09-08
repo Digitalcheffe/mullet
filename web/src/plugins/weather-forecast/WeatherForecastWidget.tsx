@@ -77,7 +77,7 @@ function WeatherForecastComponent({ data, config, size, theme }: WidgetProps<Wea
 }
 
 export const weatherForecastPlugin: UIPlugin<WeatherForecastRow> = {
-  id: 'weather-forecast',
+  id: 'mullet-weather-forecast',
   name: 'Weather (Forecast)',
   dataShape: 'weather_forecast',
   defaultSize: { w: 8, h: 3 },

@@ -82,7 +82,7 @@ function WeatherCurrentComponent({ data, config, size, theme }: WidgetProps<Weat
 }
 
 export const weatherCurrentPlugin: UIPlugin<WeatherCurrentRow> = {
-  id: 'weather-current',
+  id: 'mullet-weather-current',
   name: 'Weather (Current)',
   dataShape: 'weather_current',
   defaultSize: { w: 4, h: 3 },

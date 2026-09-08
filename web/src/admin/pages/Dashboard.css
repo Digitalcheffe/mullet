@@ -91,8 +91,47 @@
   justify-content: space-between;
 }
 
+.panel-header a {
+  font: 700 12.5px var(--font-body);
+  text-decoration: none;
+}
+
 .dashboard-panel h2 {
   font: 700 15px var(--font-heading);
+}
+
+.display-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.display-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.display-summary-swatch {
+  width: 44px;
+  height: 30px;
+  border-radius: 6px;
+  flex: none;
+}
+
+.display-summary-online {
+  color: var(--ok);
+}
+
+.display-summary-link {
+  font: 700 12px var(--font-body);
+  color: var(--accent-deep);
+  text-decoration: none;
+  flex: none;
+  white-space: nowrap;
 }
 
 .plugin-list {

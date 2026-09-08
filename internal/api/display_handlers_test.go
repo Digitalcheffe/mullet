@@ -147,6 +147,17 @@ func TestDisplayCRUDEndpoints(t *testing.T) {
 		t.Fatalf("display list has %d entries, want 1", len(list))
 	}
 
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/displays/"+strconv.Itoa(created.ID), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var fetched displayResponse
+	json.Unmarshal(rec.Body.Bytes(), &fetched)
+	if fetched.ID != created.ID || fetched.Name != created.Name || fetched.Slug != created.Slug {
+		t.Errorf("get = %+v, want %+v", fetched, created)
+	}
+
 	updateBody, _ := json.Marshal(displayRequest{Name: "Office", Slug: "office", RotationSeconds: 60})
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/displays/"+strconv.Itoa(created.ID), updateBody))
@@ -200,8 +211,14 @@ func TestCreateDisplayDuplicateSlugRejected(t *testing.T) {
 func TestUpdateDeleteMissingDisplayReturns404(t *testing.T) {
 	router, _ := newTestRouter(t, nil)
 
-	body, _ := json.Marshal(displayRequest{Name: "X", Slug: "x"})
 	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/displays/9999", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("get missing: status = %d, want 404", rec.Code)
+	}
+
+	body, _ := json.Marshal(displayRequest{Name: "X", Slug: "x"})
+	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/displays/9999", body))
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("update missing: status = %d, want 404", rec.Code)

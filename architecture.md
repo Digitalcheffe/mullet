@@ -361,7 +361,7 @@ All routes below are wired in `internal/api/router.go`.
 | `GET /api/admin/setup` | none | Whether setup has already run |
 | `POST /api/admin/login` | none | Exchange username/password for a JWT |
 | `GET /api/admin/me` | JWT | Whoami, exercises the auth guard |
-| `GET /api/admin/dashboard` | JWT | Server info + at-a-glance plugin status |
+| `GET /api/admin/dashboard` | JWT | Server info, at-a-glance plugin status, and a per-display summary (screen count, first screen's ID for an "Open in Designer" link, online -- any approved client assigned there currently polling) for the Dashboard's Displays panel (#46) |
 | `GET`/`PUT /api/admin/settings` | JWT | System settings |
 | `GET /api/admin/plugins` | JWT | List registered plugin types + manifests |
 | `GET`/`POST /api/admin/plugins/instances` | JWT | List / create plugin instances |
@@ -374,7 +374,7 @@ All routes below are wired in `internal/api/router.go`.
 | `GET`/`POST /api/admin/themes` | JWT | List / create themes |
 | `GET`/`PUT`/`DELETE /api/admin/themes/{id}` | JWT | Get / update / remove a theme (`DELETE` is `409` if a display still uses it) |
 | `GET`/`POST /api/admin/displays` | JWT | List / create displays |
-| `PUT`/`DELETE /api/admin/displays/{id}` | JWT | Update / remove a display (delete cascades to its screens and cards) |
+| `GET`/`PUT`/`DELETE /api/admin/displays/{id}` | JWT | Get one / update / remove a display (delete cascades to its screens and cards) -- the single-display `GET` (#46, for the Designer's breadcrumb) was a gap next to every other resource having one until then |
 | `GET`/`POST /api/admin/displays/{id}/screens` | JWT | List / create screens on a display |
 | `GET`/`PUT`/`DELETE /api/admin/screens/{id}` | JWT | Get / update / remove a screen (delete cascades to its cards) |
 | `GET`/`POST /api/admin/screens/{id}/cards` | JWT | List / create cards on a screen |
@@ -452,29 +452,43 @@ Display   "Kitchen"  --  /display/kitchen
 
 `DesignerPage.tsx` (`/admin/displays/{displayId}/screens/{screenId}/design`)
 renders one screen's cards on a `react-grid-layout` grid sized to that
-screen's `columns`/`row_height`/`gap`. Drag a palette entry onto the
-grid to create a card (`POST .../cards`); drag or resize an existing one
-(all 8 handles) to reposition it (`PUT .../cards/{id}`, fired on
-drag/resize *stop*, not on every intermediate frame); the grid's default
-compactor keeps cards from ever overlapping, reflowing instead of
-allowing a collision. A card's gear icon opens a settings panel: data
-source (a dropdown of configured plugin instances, filtered to ones
-whose plugin manifest lists the shape this card type reads), a raw JSON
-config editor, and an optional theme override -- a toggle plus the
-narrow `ThemeTokenFields` set described in
-[Theme Cascade](#theme-cascade-built)
-(#21), not raw JSON.
+screen's `columns`/`row_height`/`gap`. A toolbar above it (issue #46)
+shows a back arrow to Displays, a `{display name} › {screen name}`
+breadcrumb, and -- when the display has more than one screen -- tabs to
+switch between them without leaving the page (`navigate` to the other
+screen's own `/design` URL; each tab is a real route, not client-side
+screen state, so the URL always matches what's on screen). Drag a
+palette entry onto the grid to create a card (`POST .../cards`); drag or
+resize an existing one (all 8 handles) to reposition it (`PUT
+.../cards/{id}`, fired on drag/resize *stop*, not on every intermediate
+frame); the grid's default compactor keeps cards from ever overlapping,
+reflowing instead of allowing a collision. Every change persists
+immediately this way -- there's no separate manual "Save" action, since
+nothing is ever queued waiting for one.
 
-The palette itself is **not** driven by the UI plugin registry described
-below — it's a small hardcoded list in `DesignerPage.tsx` scoped to
-shapes a compiled-in data plugin can actually produce today (`clock`,
-`mullet-weather-current`, `mullet-weather-forecast`, `calendar-agenda`).
-A placed card
-still renders as a generic labeled box (widget name + data source), not
-real widget content, even for the two UI plugins that now exist -- the
-Designer's own palette-drag placeholder cards were intentionally left
-as-is (#23 wired up the live display, not the editor's own preview; see
-[Divergence](#divergence-from-the-original-proposal)).
+The palette (issue #46) reads the real UI plugin registry
+(`web/src/plugins/registry.ts`'s `uiPlugins`) directly rather than a
+separately hand-maintained list -- it can't drift out of sync with what
+UI plugins actually exist, the way an earlier hardcoded version already
+had (missing six of the ten built by the time this was noticed). A
+card's gear icon opens a settings panel: a data source dropdown
+(configured plugin instances filtered to ones whose plugin manifest
+lists the shape this card type reads), one real bound input per
+`configSchema` entry the widget declares (`ConfigFieldInput`, handling
+all six `ConfigField` types -- text/number/select/multi-select/toggle/
+color -- the same way `ManifestForm.tsx` renders a data plugin's
+`SetupField`s), and an optional theme override -- a toggle plus the
+narrow `ThemeTokenFields` set described in
+[Theme Cascade](#theme-cascade-built) (#21). Nothing here is raw JSON
+editing anymore; every value saved is guaranteed to be exactly what the
+widget's own component reads out of `config`.
+
+A placed card still renders as a generic labeled box on the Designer's
+own canvas (widget name + data source), not real widget content --
+that's a deliberate, unchanged scope line: #23 wired up the live
+display to render real widgets, not the editor's own preview, and #46
+(admin visual design) didn't extend that either. See
+[Divergence](#divergence-from-the-original-proposal).
 
 ### UI Plugins (Ten built, rendered live on the display)
 
@@ -975,13 +989,16 @@ noted here so that doc's specifics aren't taken as current fact.
   them off per display. Added as plain booleans (default on) rather
   than folding them into `theme_id`'s JSON, since they're structural
   (whether a zone renders) rather than a visual token.
-- **The Designer's palette** (#20) isn't backed by the UI plugin registry
-  that now exists (`web/src/plugins/registry.ts`, #22/#23) -- it's still
-  a hardcoded list in `DesignerPage.tsx`, and a placed card still renders
-  as a generic labeled placeholder there, not real widget content, even
-  though the live display (#23) renders the same card for real. Wiring
-  the editor's own preview up to the registry is future work, not part
-  of what #23 scoped (a live display, not the Designer). See
+- **The Designer's palette** (#20) started as a hardcoded list in
+  `DesignerPage.tsx`, not backed by the UI plugin registry that already
+  existed (`web/src/plugins/registry.ts`, #22/#23) -- #46 fixed that (the
+  palette reads `uiPlugins` directly now), but a placed card still
+  renders as a generic labeled placeholder on the Designer's own canvas,
+  not real widget content, even though the live display (#23) renders
+  the same card for real. Wiring the editor's own preview up to the
+  registry is still future work, not part of what #23 or #46 scoped
+  (a live display, and the admin app's visual design, respectively --
+  neither was "the Designer's canvas renders real widgets"). See
   [The Designer](#the-designer).
 - **The top bar's weather summary** (#23) reads whichever
   `weather_current` row the API returns first rather than a per-display

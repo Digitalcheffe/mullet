@@ -19,13 +19,23 @@ type pluginStatusResponse struct {
 	LastError      *string `json:"last_error,omitempty"`
 }
 
+type dashboardDisplayResponse struct {
+	ID            int    `json:"id"`
+	Name          string `json:"name"`
+	Slug          string `json:"slug"`
+	ScreenCount   int    `json:"screen_count"`
+	FirstScreenID *int   `json:"first_screen_id,omitempty"`
+	Online        bool   `json:"online"`
+}
+
 type dashboardResponse struct {
-	UptimeSeconds     int64                  `json:"uptime_seconds"`
-	PluginCount       int                    `json:"plugin_count"`
-	DisplayCount      int                    `json:"display_count"`
-	ActiveClientCount int                    `json:"active_client_count"`
-	SystemStatus      string                 `json:"system_status"` // "normal" | "attention"
-	Plugins           []pluginStatusResponse `json:"plugins"`
+	UptimeSeconds     int64                      `json:"uptime_seconds"`
+	PluginCount       int                        `json:"plugin_count"`
+	DisplayCount      int                        `json:"display_count"`
+	ActiveClientCount int                        `json:"active_client_count"`
+	SystemStatus      string                     `json:"system_status"` // "normal" | "attention"
+	Plugins           []pluginStatusResponse     `json:"plugins"`
+	Displays          []dashboardDisplayResponse `json:"displays"`
 }
 
 // handleDashboard reports the system overview shown on the admin
@@ -69,10 +79,33 @@ func handleDashboard(sqldb *sql.DB, info ServerInfo) http.HandlerFunc {
 			return
 		}
 		activeClients := 0
+		onlineByDisplay := make(map[int]bool, len(clients))
 		for _, c := range clients {
 			if isClientOnline(c) {
 				activeClients++
+				if c.DisplayID != nil {
+					onlineByDisplay[*c.DisplayID] = true
+				}
 			}
+		}
+
+		displaySummaries := make([]dashboardDisplayResponse, 0, len(displays))
+		for _, d := range displays {
+			screens, err := db.ListScreensByDisplay(sqldb, d.ID)
+			if err != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			var firstScreenID *int
+			if len(screens) > 0 {
+				id := screens[0].ID
+				firstScreenID = &id
+			}
+			displaySummaries = append(displaySummaries, dashboardDisplayResponse{
+				ID: d.ID, Name: d.Name, Slug: d.Slug,
+				ScreenCount: len(screens), FirstScreenID: firstScreenID,
+				Online: onlineByDisplay[d.ID],
+			})
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -83,6 +116,7 @@ func handleDashboard(sqldb *sql.DB, info ServerInfo) http.HandlerFunc {
 			ActiveClientCount: activeClients,
 			SystemStatus:      systemStatus,
 			Plugins:           plugins,
+			Displays:          displaySummaries,
 		})
 	}
 }

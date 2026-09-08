@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/Digitalcheffe/mullet/internal/auth"
@@ -64,6 +65,50 @@ func TestDashboard(t *testing.T) {
 	}
 	if resp.SystemStatus != "normal" {
 		t.Errorf("SystemStatus = %q, want normal", resp.SystemStatus)
+	}
+}
+
+func TestDashboardDisplaySummaries(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	displayID := createTestDisplay(t, router)
+
+	screenBody, _ := json.Marshal(screenRequest{Name: "Main"})
+	screenRec := httptest.NewRecorder()
+	router.ServeHTTP(screenRec, authedRequest(t, http.MethodPost, "/api/admin/displays/"+strconv.Itoa(displayID)+"/screens", screenBody))
+	if screenRec.Code != http.StatusCreated {
+		t.Fatalf("create screen: status = %d, want 201 (body: %s)", screenRec.Code, screenRec.Body.String())
+	}
+	var screen screenResponse
+	json.Unmarshal(screenRec.Body.Bytes(), &screen)
+	screenID := screen.ID
+
+	c := registerTestClient(t, router, "x7k-m2p")
+	approveBody, _ := json.Marshal(approveClientRequest{DisplayID: displayID})
+	router.ServeHTTP(httptest.NewRecorder(), authedRequest(t, http.MethodPut, "/api/admin/clients/"+strconv.Itoa(c.ID)+"/approve", approveBody))
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/clients/x7k-m2p/config", nil)) // poll once so last_seen_at is recent
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/dashboard", nil))
+	var resp dashboardResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decoding dashboard response: %v", err)
+	}
+
+	var found *dashboardDisplayResponse
+	for i := range resp.Displays {
+		if resp.Displays[i].ID == displayID {
+			found = &resp.Displays[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("Displays = %+v, missing display %d", resp.Displays, displayID)
+	}
+	if found.ScreenCount != 1 || found.FirstScreenID == nil || *found.FirstScreenID != screenID {
+		t.Errorf("display summary = %+v, want ScreenCount=1 FirstScreenID=%d", found, screenID)
+	}
+	if !found.Online {
+		t.Error("display summary Online = false, want true (an approved, recently-polled client is assigned to it)")
 	}
 }
 

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApiFetch } from '../auth/useApiFetch';
+import { colorForID } from '../../plugins/shared/idColor';
 import './Dashboard.css';
 
 interface PluginStatus {
@@ -12,6 +14,15 @@ interface PluginStatus {
   last_error?: string;
 }
 
+interface DisplaySummary {
+  id: number;
+  name: string;
+  slug: string;
+  screen_count: number;
+  first_screen_id?: number;
+  online: boolean;
+}
+
 interface DashboardStats {
   uptime_seconds: number;
   plugin_count: number;
@@ -19,6 +30,7 @@ interface DashboardStats {
   active_client_count: number;
   system_status: 'normal' | 'attention';
   plugins: PluginStatus[];
+  displays: DisplaySummary[];
 }
 
 function formatUptime(totalSeconds: number): string {
@@ -94,6 +106,7 @@ export default function Dashboard() {
         <section className="dashboard-panel">
           <div className="panel-header">
             <h2>Plugin Status</h2>
+            <Link to="/admin/plugins">Manage →</Link>
           </div>
           {stats.plugins.length === 0 ? (
             <EmptyState text="No data plugins configured yet." />
@@ -120,8 +133,37 @@ export default function Dashboard() {
         <section className="dashboard-panel">
           <div className="panel-header">
             <h2>Displays</h2>
+            <Link to="/admin/displays">+ New</Link>
           </div>
-          <EmptyState text="Displays are configured in the Designer — coming in a future update." />
+          {stats.displays.length === 0 ? (
+            <EmptyState text="No displays configured yet." />
+          ) : (
+            <div className="display-summary-list">
+              {stats.displays.map((d) => (
+                <div className="display-summary-row" key={d.id}>
+                  <div className="display-summary-swatch" style={{ background: colorForID(d.id) }} />
+                  <div className="plugin-info">
+                    <div className="plugin-name">{d.name}</div>
+                    <div className="plugin-detail">
+                      {d.screen_count} {d.screen_count === 1 ? 'screen' : 'screens'} &middot;{' '}
+                      <span className={d.online ? 'display-summary-online' : undefined}>
+                        {d.online ? 'online' : 'offline'}
+                      </span>
+                    </div>
+                  </div>
+                  {d.first_screen_id != null ? (
+                    <Link className="display-summary-link" to={`/admin/displays/${d.id}/screens/${d.first_screen_id}/design`}>
+                      Open in Designer →
+                    </Link>
+                  ) : (
+                    <Link className="display-summary-link" to="/admin/displays">
+                      Add a screen →
+                    </Link>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           <h2 style={{ marginTop: 8 }}>Recent Activity</h2>
           <EmptyState text="Activity log coming soon." />

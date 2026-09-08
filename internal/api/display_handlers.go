@@ -245,6 +245,27 @@ func handleListDisplays(sqldb *sql.DB) http.HandlerFunc {
 	}
 }
 
+func handleGetDisplay(sqldb *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(r.PathValue("id"))
+		if err != nil {
+			http.Error(w, "invalid id", http.StatusBadRequest)
+			return
+		}
+		d, err := db.GetDisplay(sqldb, id)
+		if errors.Is(err, db.ErrNotFound) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(toDisplayResponse(d))
+	}
+}
+
 func handleCreateDisplay(sqldb *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req displayRequest

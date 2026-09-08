@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useApiFetch } from '../auth/useApiFetch';
+import './SettingsPage.css';
 
 interface Settings {
   server_name: string;
@@ -52,32 +53,46 @@ export default function SettingsPage() {
   }
 
   return (
-    <div>
-      <h2>Settings</h2>
-      <form onSubmit={handleSubmit}>
-        <label>
-          Server name
-          <input
-            value={serverName}
-            onChange={(e) => {
-              setServerName(e.target.value);
-              setStatus('idle');
-            }}
-            required
-          />
-        </label>
-        <button type="submit" disabled={status === 'saving'}>
-          {status === 'saving' ? 'Saving…' : 'Save'}
-        </button>
-        {status === 'saved' && <span> Saved.</span>}
-        {status === 'error' && <span role="alert"> Failed to save.</span>}
-      </form>
-      <dl>
-        <dt>Port</dt>
-        <dd>{settings.port}</dd>
-        <dt>Database path</dt>
-        <dd>{settings.db_path}</dd>
-      </dl>
+    <div className="settings-page">
+      <h1>Settings</h1>
+
+      <div className="settings-card">
+        <form className="settings-form" onSubmit={handleSubmit}>
+          <label className="field">
+            <span className="kicker">Server name</span>
+            <input
+              value={serverName}
+              onChange={(e) => {
+                setServerName(e.target.value);
+                setStatus('idle');
+              }}
+              required
+            />
+          </label>
+          <div className="settings-form-actions">
+            <button type="submit" className="btn-primary" disabled={status === 'saving'}>
+              {status === 'saving' ? 'Saving…' : 'Save'}
+            </button>
+            {status === 'saved' && <span className="save-note ok">Saved.</span>}
+            {status === 'error' && (
+              <span className="save-note error" role="alert">
+                Failed to save.
+              </span>
+            )}
+          </div>
+        </form>
+
+        <div className="settings-readonly">
+          <div className="field">
+            <span className="kicker">Port</span>
+            <div className="readonly-value">{settings.port}</div>
+          </div>
+          <div className="field">
+            <span className="kicker">Database path</span>
+            <div className="readonly-value">{settings.db_path}</div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

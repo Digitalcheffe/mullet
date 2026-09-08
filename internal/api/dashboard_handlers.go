@@ -9,11 +9,23 @@ import (
 	"github.com/Digitalcheffe/mullet/internal/db"
 )
 
+type pluginStatusResponse struct {
+	ID             int     `json:"id"`
+	PluginID       string  `json:"plugin_id"`
+	InstanceName   string  `json:"instance_name"`
+	RefreshSeconds int     `json:"refresh_seconds"`
+	Enabled        bool    `json:"enabled"`
+	Status         string  `json:"status"` // "synced" | "retrying" | "pending" | "disabled"
+	LastError      *string `json:"last_error,omitempty"`
+}
+
 type dashboardResponse struct {
-	UptimeSeconds     int64 `json:"uptime_seconds"`
-	PluginCount       int   `json:"plugin_count"`
-	DisplayCount      int   `json:"display_count"`
-	ActiveClientCount int   `json:"active_client_count"`
+	UptimeSeconds     int64                  `json:"uptime_seconds"`
+	PluginCount       int                    `json:"plugin_count"`
+	DisplayCount      int                    `json:"display_count"`
+	ActiveClientCount int                    `json:"active_client_count"`
+	SystemStatus      string                 `json:"system_status"` // "normal" | "attention"
+	Plugins           []pluginStatusResponse `json:"plugins"`
 }
 
 // handleDashboard reports the system overview shown on the admin
@@ -21,18 +33,45 @@ type dashboardResponse struct {
 // until the displays (#18) and clients (#29) tables exist.
 func handleDashboard(sqldb *sql.DB, info ServerInfo) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var pluginCount int
-		if err := sqldb.QueryRow(`SELECT COUNT(*) FROM data_plugin_instances`).Scan(&pluginCount); err != nil {
+		statuses, err := db.ListPluginInstanceStatuses(sqldb)
+		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
+		}
+
+		plugins := make([]pluginStatusResponse, 0, len(statuses))
+		systemStatus := "normal"
+		for _, s := range statuses {
+			status := "pending"
+			switch {
+			case !s.Enabled:
+				status = "disabled"
+			case s.LastError != nil:
+				status = "retrying"
+				systemStatus = "attention"
+			case s.LastFetchAt != nil:
+				status = "synced"
+			}
+
+			plugins = append(plugins, pluginStatusResponse{
+				ID:             s.ID,
+				PluginID:       s.PluginID,
+				InstanceName:   s.InstanceName,
+				RefreshSeconds: int(s.RefreshInterval.Seconds()),
+				Enabled:        s.Enabled,
+				Status:         status,
+				LastError:      s.LastError,
+			})
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(dashboardResponse{
 			UptimeSeconds:     int64(time.Since(info.StartedAt).Seconds()),
-			PluginCount:       pluginCount,
+			PluginCount:       len(statuses),
 			DisplayCount:      0,
 			ActiveClientCount: 0,
+			SystemStatus:      systemStatus,
+			Plugins:           plugins,
 		})
 	}
 }

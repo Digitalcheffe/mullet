@@ -30,6 +30,51 @@ func TestLoadEnabledPluginInstances(t *testing.T) {
 	}
 }
 
+func TestListPluginInstanceStatuses(t *testing.T) {
+	sqldb := newTestDB(t) // seeds instance id=1 'openweathermap'/'Home', enabled, no fetch yet
+
+	if _, err := sqldb.Exec(
+		`INSERT INTO data_plugin_instances (id, plugin_id, instance_name, refresh_seconds, enabled) VALUES (2, 'clock', 'Kitchen Clock', 60, 0)`,
+	); err != nil {
+		t.Fatalf("seeding disabled instance: %v", err)
+	}
+	if err := RecordFetchError(sqldb, 1, errors.New("rate limited")); err != nil {
+		t.Fatalf("RecordFetchError: %v", err)
+	}
+
+	statuses, err := ListPluginInstanceStatuses(sqldb)
+	if err != nil {
+		t.Fatalf("ListPluginInstanceStatuses: %v", err)
+	}
+	if len(statuses) != 2 {
+		t.Fatalf("got %d statuses, want 2 (enabled and disabled both included)", len(statuses))
+	}
+
+	byID := map[int]PluginInstanceStatus{}
+	for _, s := range statuses {
+		byID[s.ID] = s
+	}
+
+	owm := byID[1]
+	if owm.InstanceName != "Home" || owm.PluginID != "openweathermap" || !owm.Enabled {
+		t.Errorf("instance 1 = %+v, unexpected values", owm)
+	}
+	if owm.LastError == nil || *owm.LastError != "rate limited" {
+		t.Errorf("instance 1 LastError = %v, want %q", owm.LastError, "rate limited")
+	}
+	if owm.LastFetchAt == nil {
+		t.Error("instance 1 LastFetchAt is nil, want a timestamp")
+	}
+
+	clock := byID[2]
+	if clock.Enabled {
+		t.Error("instance 2 Enabled = true, want false")
+	}
+	if clock.LastError != nil || clock.LastFetchAt != nil {
+		t.Errorf("instance 2 = %+v, want no fetch recorded yet", clock)
+	}
+}
+
 func TestRecordFetchSuccessAndError(t *testing.T) {
 	sqldb := newTestDB(t)
 

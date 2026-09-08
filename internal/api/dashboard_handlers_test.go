@@ -56,6 +56,57 @@ func TestDashboard(t *testing.T) {
 	if resp.UptimeSeconds < 0 {
 		t.Errorf("UptimeSeconds = %d, want >= 0", resp.UptimeSeconds)
 	}
+	if len(resp.Plugins) != 1 {
+		t.Fatalf("Plugins has %d entries, want 1", len(resp.Plugins))
+	}
+	if resp.Plugins[0].Status != "pending" {
+		t.Errorf("Plugins[0].Status = %q, want pending (never fetched)", resp.Plugins[0].Status)
+	}
+	if resp.SystemStatus != "normal" {
+		t.Errorf("SystemStatus = %q, want normal", resp.SystemStatus)
+	}
+}
+
+func TestDashboardPluginStatuses(t *testing.T) {
+	router, sqldb := newTestRouter(t, nil)
+	if _, err := sqldb.Exec(`DELETE FROM data_plugin_instances`); err != nil {
+		t.Fatalf("clearing seeded plugin instances: %v", err)
+	}
+	if _, err := sqldb.Exec(
+		`INSERT INTO data_plugin_instances (id, plugin_id, instance_name, refresh_seconds, enabled) VALUES
+			(1, 'openweathermap', 'Home', 900, 1),
+			(2, 'clock', 'Office Clock', 60, 0)`,
+	); err != nil {
+		t.Fatalf("seeding plugin instances: %v", err)
+	}
+	if _, err := sqldb.Exec(
+		`UPDATE data_plugin_instances SET last_error = 'invalid API key', last_fetch_at = CURRENT_TIMESTAMP WHERE id = 1`,
+	); err != nil {
+		t.Fatalf("seeding error state: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/dashboard", nil))
+
+	var resp dashboardResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decoding dashboard response: %v", err)
+	}
+
+	if resp.SystemStatus != "attention" {
+		t.Errorf("SystemStatus = %q, want attention (a plugin is retrying)", resp.SystemStatus)
+	}
+
+	byID := map[int]pluginStatusResponse{}
+	for _, p := range resp.Plugins {
+		byID[p.ID] = p
+	}
+	if byID[1].Status != "retrying" {
+		t.Errorf("plugin 1 status = %q, want retrying", byID[1].Status)
+	}
+	if byID[2].Status != "disabled" {
+		t.Errorf("plugin 2 status = %q, want disabled", byID[2].Status)
+	}
 }
 
 func TestGetSettingsDefaultsServerName(t *testing.T) {

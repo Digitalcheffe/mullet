@@ -1,0 +1,152 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mullet — Admin UI: Dashboard (mockup)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap">
+<style>
+  :root{
+    --bg-app:#F7F4EF; --surface:#FFFFFF; --surface-alt:#FBF8F2;
+    --ink:#2A2320; --ink-soft:#8A7E73; --border:#E7E0D6;
+    --accent:oklch(70% 0.16 45); --accent-deep:oklch(52% 0.15 40);
+    --ok:#4E8E76; --warn:#C08A2E;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;}
+  a{color:var(--accent-deep);} a:hover{color:var(--accent);}
+  .kicker{font:700 11px/1 "Manrope",sans-serif;letter-spacing:.11em;text-transform:uppercase;}
+  .num{font-variant-numeric:tabular-nums;}
+</style>
+</head>
+<body>
+
+<div style="width:1440px;height:920px;background:var(--bg-app);font-family:'Manrope',sans-serif;color:var(--ink);display:flex;">
+
+  <!-- sidebar -->
+  <div style="width:232px;background:var(--surface-alt);border-right:1px solid var(--border);padding:22px 14px;display:flex;flex-direction:column;gap:2px;flex:none;">
+    <div style="display:flex;align-items:center;gap:9px;padding:0 8px 20px;">
+      <div style="width:28px;height:28px;border-radius:9px;background:var(--accent);"></div>
+      <span style="font:700 17px 'Space Grotesk',sans-serif;color:var(--ink);letter-spacing:-.01em;">mullet</span>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:10px;background:var(--surface);color:var(--ink);font:700 13.5px 'Manrope';box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="var(--accent-deep)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="11" y="3" width="6" height="6" rx="1"/><rect x="3" y="11" width="6" height="6" rx="1"/><rect x="11" y="11" width="6" height="6" rx="1"/></svg>Dashboard
+    </div>
+    <div style="display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:10px;color:var(--ink-soft);font:600 13.5px 'Manrope';">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v4M12 3v4M6 7h8v3a4 4 0 0 1-4 4 4 4 0 0 1-4-4V7z"/><path d="M10 14v3"/></svg>Data Plugins
+    </div>
+    <div style="display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:10px;color:var(--ink-soft);font:600 13.5px 'Manrope';">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="12" rx="2"/><line x1="3" y1="8" x2="17" y2="8"/></svg>Displays
+    </div>
+
+    <div style="display:flex;align-items:center;gap:11px;padding:10px 11px;margin-top:2px;border-radius:10px;color:var(--accent-deep);font:700 13.5px 'Manrope';border:1px dashed var(--border);">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="var(--accent-deep)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3l3 3-9 9-4 1 1-4 9-9z"/></svg>Designer
+      <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="var(--accent-deep)" stroke-width="2" stroke-linecap="round" style="margin-left:auto;"><path d="M7 4l6 6-6 6"/></svg>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:10px;color:var(--ink-soft);font:600 13.5px 'Manrope';margin-top:8px;">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><circle cx="7.3" cy="8" r="1"/><circle cx="10" cy="6" r="1"/><circle cx="12.7" cy="8" r="1"/></svg>Themes
+    </div>
+    <div style="display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:10px;color:var(--ink-soft);font:600 13.5px 'Manrope';">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="3"/><path d="M2.3 17c0-3 2.1-5 4.7-5s4.7 2 4.7 5"/><circle cx="15" cy="8.3" r="2.3"/><path d="M13 17c.3-2 1.5-3.4 3-3.6"/></svg>Clients
+    </div>
+
+    <div style="flex:1;"></div>
+    <div style="display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:10px;color:var(--ink-soft);font:600 13.5px 'Manrope';">
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.6"/><path d="M10 3v2M10 15v2M17 10h-2M5 10H3M14.6 5.4l-1.3 1.3M6.7 13.3l-1.3 1.3M14.6 14.6l-1.3-1.3M6.7 6.7L5.4 5.4"/></svg>Settings
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 8px 0;border-top:1px solid var(--border);margin-top:8px;">
+      <div style="width:26px;height:26px;border-radius:50%;background:var(--border);"></div>
+      <div style="font:700 12.5px 'Manrope';color:var(--ink);">Ryan</div>
+    </div>
+  </div>
+
+  <!-- main -->
+  <div style="flex:1;padding:30px 36px;display:flex;flex-direction:column;gap:22px;overflow:hidden;">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font:700 24px 'Space Grotesk',sans-serif;color:var(--ink);">Dashboard</div>
+        <div style="font:500 13px 'Manrope';color:var(--ink-soft);margin-top:3px;">Server overview &middot; up 12d 4h</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);font:700 13px 'Manrope';color:var(--ink);padding:9px 15px;border-radius:11px;">
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="var(--ok)" stroke-width="2.5" stroke-linecap="round"><circle cx="10" cy="10" r="4"/></svg>
+        All systems normal
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;">
+        <div class="kicker" style="color:var(--ink-soft);margin-bottom:10px;">Uptime</div>
+        <div style="font:700 26px 'Space Grotesk',sans-serif;color:var(--ink);">12d 4h</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;">
+        <div class="kicker" style="color:var(--ink-soft);margin-bottom:10px;">Data Plugins</div>
+        <div style="font:700 26px 'Space Grotesk',sans-serif;color:var(--ink);">3 <span style="font:600 13px 'Manrope';color:var(--ink-soft);">active</span></div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;">
+        <div class="kicker" style="color:var(--ink-soft);margin-bottom:10px;">Displays</div>
+        <div style="font:700 26px 'Space Grotesk',sans-serif;color:var(--ink);">2</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;">
+        <div class="kicker" style="color:var(--ink-soft);margin-bottom:10px;">Active Clients</div>
+        <div style="font:700 26px 'Space Grotesk',sans-serif;color:var(--ink);">2 <span style="font:600 13px 'Manrope';color:var(--ink-soft);">online</span></div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:18px;flex:1;min-height:0;">
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="font:700 15px 'Space Grotesk',sans-serif;color:var(--ink);">Plugin Status</div>
+          <a style="font:700 12.5px 'Manrope';text-decoration:none;">Manage &rarr;</a>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px;">
+          <div style="display:flex;align-items:center;gap:13px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;background:var(--surface-alt);">
+            <div style="width:30px;height:30px;border-radius:8px;background:#EFE7DA;display:flex;align-items:center;justify-content:center;flex:none;"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="var(--accent-deep)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="13" rx="2"/><line x1="3" y1="8" x2="17" y2="8"/></svg></div>
+            <div style="flex:1;"><div style="font:700 13.5px 'Manrope';color:var(--ink);">Work Calendar</div><div style="font:500 11.5px 'Manrope';color:var(--ink-soft);">Microsoft Calendar &middot; every 5 min</div></div>
+            <span style="display:flex;align-items:center;gap:6px;font:700 10.5px 'Manrope';color:var(--ok);text-transform:uppercase;letter-spacing:.06em;"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok);"></span>Synced</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:13px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;background:var(--surface-alt);">
+            <div style="width:30px;height:30px;border-radius:8px;background:#EFE7DA;display:flex;align-items:center;justify-content:center;flex:none;"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="var(--accent-deep)" stroke-width="1.6" stroke-linecap="round"><path d="M6 14a3.5 3.5 0 0 1 .3-7 4.5 4.5 0 0 1 8.6 1.4A3 3 0 0 1 15 14H6z"/></svg></div>
+            <div style="flex:1;"><div style="font:700 13.5px 'Manrope';color:var(--ink);">OpenWeatherMap</div><div style="font:500 11.5px 'Manrope';color:var(--ink-soft);">Richmond, VA &middot; every 15 min</div></div>
+            <span style="display:flex;align-items:center;gap:6px;font:700 10.5px 'Manrope';color:var(--ok);text-transform:uppercase;letter-spacing:.06em;"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok);"></span>Synced</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:13px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;background:var(--surface-alt);">
+            <div style="width:30px;height:30px;border-radius:8px;background:#EFE7DA;display:flex;align-items:center;justify-content:center;flex:none;"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="var(--accent-deep)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="3"/><path d="M2.3 17c0-3 2.1-5 4.7-5s4.7 2 4.7 5"/></svg></div>
+            <div style="flex:1;"><div style="font:700 13.5px 'Manrope';color:var(--ink);">Home Assistant</div><div style="font:500 11.5px 'Manrope';color:var(--ink-soft);">Last synced 2 minutes ago</div></div>
+            <span style="display:flex;align-items:center;gap:6px;font:700 10.5px 'Manrope';color:var(--warn);text-transform:uppercase;letter-spacing:.06em;"><span style="width:6px;height:6px;border-radius:50%;background:var(--warn);"></span>Retrying</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="font:700 15px 'Space Grotesk',sans-serif;color:var(--ink);">Displays</div>
+          <a style="font:700 12.5px 'Manrope';text-decoration:none;">+ New</a>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="display:flex;align-items:center;gap:13px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;">
+            <div style="width:44px;height:30px;border-radius:6px;background:linear-gradient(135deg,#2A1B40,#150C22);flex:none;"></div>
+            <div style="flex:1;"><div style="font:700 13.5px 'Manrope';color:var(--ink);">Kitchen</div><div style="font:500 11.5px 'Manrope';color:var(--ink-soft);">2 screens &middot; online</div></div>
+            <span style="font:700 12px 'Manrope';color:var(--accent-deep);">Open in Designer &rarr;</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:13px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;">
+            <div style="width:44px;height:30px;border-radius:6px;background:linear-gradient(135deg,#3A2A1B,#1C120C);flex:none;"></div>
+            <div style="flex:1;"><div style="font:700 13.5px 'Manrope';color:var(--ink);">Office</div><div style="font:500 11.5px 'Manrope';color:var(--ink-soft);">1 screen &middot; online</div></div>
+            <span style="font:700 12px 'Manrope';color:var(--accent-deep);">Open in Designer &rarr;</span>
+          </div>
+        </div>
+        <div style="flex:1;"></div>
+        <div style="font:700 15px 'Space Grotesk',sans-serif;color:var(--ink);">Recent Activity</div>
+        <div style="display:flex;flex-direction:column;gap:8px;font:500 12.5px 'Manrope';color:var(--ink-soft);">
+          <div>Home Assistant plugin retried a failed sync &middot; 2m ago</div>
+          <div>Kitchen &middot; Main screen layout saved &middot; 41m ago</div>
+          <div>New client paired: Office (Raspberry Pi) &middot; 3h ago</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

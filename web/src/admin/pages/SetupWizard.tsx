@@ -44,42 +44,43 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <h1>Welcome to Mullet</h1>
-      <p>Create the admin account to get started.</p>
-      {error && <p role="alert">{error}</p>}
-      <label>
-        Username
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-          autoFocus
-        />
-      </label>
-      <label>
-        Password
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          minLength={8}
-        />
-      </label>
-      <label>
-        Confirm password
-        <input
-          type="password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          required
-          minLength={8}
-        />
-      </label>
-      <button type="submit" disabled={submitting}>
-        {submitting ? 'Creating…' : 'Create admin account'}
-      </button>
-    </form>
+    <div className="auth-page">
+      <form className="auth-card" onSubmit={handleSubmit}>
+        <h1>Welcome to Mullet</h1>
+        <p>Create the admin account to get started.</p>
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        <label className="field">
+          <span className="kicker">Username</span>
+          <input value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus />
+        </label>
+        <label className="field">
+          <span className="kicker">Password</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={8}
+          />
+        </label>
+        <label className="field">
+          <span className="kicker">Confirm password</span>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            minLength={8}
+          />
+        </label>
+        <button type="submit" className="btn-primary" disabled={submitting}>
+          {submitting ? 'Creating…' : 'Create admin account'}
+        </button>
+      </form>
+    </div>
   );
 }

@@ -1,0 +1,75 @@
+/*
+ * Admin UI design tokens (see docs/admin-ui-design-spec.md).
+ *
+ * Scoped to .admin-app-root rather than :root: this is the server admin
+ * app's own static visual identity, distinct from the wall-mounted
+ * Display renderer's per-display, DB-configurable theme system
+ * (shared/themes/tokens.ts, edited via the future Theme Editor). The two
+ * are deliberately separate -- an admin UI restyle should never affect
+ * what a display shows.
+ */
+.admin-app-root {
+  --bg-app: #f7f4ef;
+  --surface: #ffffff;
+  --surface-alt: #fbf8f2;
+  --ink: #2a2320;
+  --ink-soft: #8a7e73;
+  --border: #e7e0d6;
+  --accent: oklch(70% 0.16 45);
+  --accent-deep: oklch(52% 0.15 40);
+  --ok: #4e8e76;
+  --warn: #c08a2e;
+  --error: #b5493c;
+  --error-bg: #ead4d0;
+
+  --font-heading: 'Space Grotesk', sans-serif;
+  --font-body: 'Manrope', sans-serif;
+
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+
+  min-height: 100svh;
+  background: var(--bg-app);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+.admin-app-root h1,
+.admin-app-root h2,
+.admin-app-root h3 {
+  font-family: var(--font-heading);
+  margin: 0;
+}
+
+.admin-app-root button {
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+.admin-app-root input,
+.admin-app-root select {
+  font-family: var(--font-body);
+}
+
+.admin-app-root a {
+  color: var(--accent-deep);
+}
+.admin-app-root a:hover {
+  color: var(--accent);
+}
+
+.kicker {
+  font: 700 11px/1 var(--font-body);
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}

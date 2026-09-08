@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Route, Routes } from 'react-router-dom';
+import './adminTheme.css';
+import './forms.css';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import AdminLayout from './layout/AdminLayout';
 import Dashboard from './pages/Dashboard';
@@ -9,9 +11,11 @@ import SetupWizard from './pages/SetupWizard';
 
 export default function AdminApp() {
   return (
-    <AuthProvider>
-      <AdminShell />
-    </AuthProvider>
+    <div className="admin-app-root">
+      <AuthProvider>
+        <AdminShell />
+      </AuthProvider>
+    </div>
   );
 }
 

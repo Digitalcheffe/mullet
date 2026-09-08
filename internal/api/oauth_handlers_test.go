@@ -99,8 +99,37 @@ func (p *fakeOAuthPluginRequiringToken) Fetch(ctx context.Context) (map[string][
 	return map[string][]any{}, nil
 }
 
+// fakeAPIKeyDiscoverablePlugin is a non-OAuth2 (AuthType "api_key")
+// plugin that implements Discoverable -- for testing that discovery
+// works for a plugin whose credentials are just a plain config field
+// (home-assistant's static token, e.g.), with no separate authorize
+// step at all, unlike every fakeOAuthPlugin variant above.
+type fakeAPIKeyDiscoverablePlugin struct{}
+
+func (p *fakeAPIKeyDiscoverablePlugin) ID() string   { return "test-apikey-discoverable" }
+func (p *fakeAPIKeyDiscoverablePlugin) Name() string { return "Test API Key Plugin" }
+func (p *fakeAPIKeyDiscoverablePlugin) Manifest() plugindata.DataPluginManifest {
+	return plugindata.DataPluginManifest{
+		ID: "test-apikey-discoverable", Name: "Test API Key Plugin", AuthType: "api_key",
+		SetupFields: []plugindata.SetupField{
+			{Key: "api_key", Label: "API Key", Type: "password"},
+			{Key: "entities", Label: "Entities", Type: "multi-select", Dynamic: true},
+		},
+	}
+}
+func (p *fakeAPIKeyDiscoverablePlugin) DataShapes() []string               { return nil }
+func (p *fakeAPIKeyDiscoverablePlugin) RefreshInterval() time.Duration     { return time.Minute }
+func (p *fakeAPIKeyDiscoverablePlugin) Configure(cfg map[string]any) error { return nil }
+func (p *fakeAPIKeyDiscoverablePlugin) Fetch(ctx context.Context) (map[string][]any, error) {
+	return map[string][]any{}, nil
+}
+func (p *fakeAPIKeyDiscoverablePlugin) Discover(ctx context.Context, field string, cfg map[string]any) ([]plugindata.DiscoveredOption, error) {
+	key, _ := cfg["api_key"].(string)
+	return []plugindata.DiscoveredOption{{Value: "entity-1", Label: "Entity One (api_key=" + key + ")"}}, nil
+}
+
 // fakeOAuthPluginNoDiscover is an oauth2-manifest plugin that does NOT
-// implement Discoverable, for testing that /oauth/discover fails
+// implement Discoverable, for testing that /discover fails
 // gracefully against a plugin with no discovery support instead of
 // panicking on the type assertion.
 type fakeOAuthPluginNoDiscover struct {
@@ -168,6 +197,9 @@ func newTestRouterWithOAuthPlugin(t *testing.T, tokenURL string) (http.Handler, 
 	}
 	if err := registry.Register(&fakeOAuthPluginRequiringToken{tokenURL: tokenURL}); err != nil {
 		t.Fatalf("registering fake oauth plugin (requires token): %v", err)
+	}
+	if err := registry.Register(&fakeAPIKeyDiscoverablePlugin{}); err != nil {
+		t.Fatalf("registering fake api_key discoverable plugin: %v", err)
 	}
 
 	sched := scheduler.New(sqldb, registry)
@@ -503,7 +535,7 @@ func TestOAuthDiscoverReturnsOptionsForAuthorizedInstance(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/plugins/instances/"+strconv.Itoa(instanceID)+"/oauth/discover?field=calendars", nil))
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/plugins/instances/"+strconv.Itoa(instanceID)+"/discover?field=calendars", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
 	}
@@ -527,7 +559,7 @@ func TestOAuthDiscoverUnauthorizedInstanceReturns409(t *testing.T) {
 	instanceID := createTestOAuthInstance(t, router, `{"client_id":"abc","client_secret":"xyz","tenant":"consumers"}`)
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/plugins/instances/"+strconv.Itoa(instanceID)+"/oauth/discover?field=calendars", nil))
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/plugins/instances/"+strconv.Itoa(instanceID)+"/discover?field=calendars", nil))
 	if rec.Code != http.StatusConflict {
 		t.Errorf("status = %d, want 409 (not yet authorized)", rec.Code)
 	}
@@ -540,7 +572,7 @@ func TestOAuthDiscoverMissingFieldParamReturns400(t *testing.T) {
 	instanceID := createTestOAuthInstance(t, router, `{"client_id":"abc","client_secret":"xyz","tenant":"consumers"}`)
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/plugins/instances/"+strconv.Itoa(instanceID)+"/oauth/discover", nil))
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/plugins/instances/"+strconv.Itoa(instanceID)+"/discover", nil))
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
 	}
@@ -557,9 +589,36 @@ func TestOAuthDiscoverPluginWithoutDiscoverableFails(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/plugins/instances/"+strconv.Itoa(instanceID)+"/oauth/discover?field=calendars", nil))
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/plugins/instances/"+strconv.Itoa(instanceID)+"/discover?field=calendars", nil))
 	if rec.Code < 400 {
 		t.Errorf("status = %d, want an error status for a plugin with no Discover support", rec.Code)
+	}
+}
+
+// TestDiscoverWorksForNonOAuth2PluginWithoutAuthorizing guards handleDiscover's
+// generalization beyond OAuth2 plugins: an api_key-type plugin (e.g.
+// home-assistant, #27) has no separate "authorize" step at all -- its
+// own config already has everything Discover needs the moment the
+// instance exists, so discovery must work immediately, not require the
+// oauth_authorized gate that only makes sense for AuthType "oauth2".
+func TestDiscoverWorksForNonOAuth2PluginWithoutAuthorizing(t *testing.T) {
+	srv := fakeProviderServer(t)
+	defer srv.Close()
+	router, _ := newTestRouterWithOAuthPlugin(t, srv.URL)
+
+	instanceID := createTestOAuthInstanceForPlugin(t, router, "test-apikey-discoverable", `{"api_key":"secret-123"}`)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/plugins/instances/"+strconv.Itoa(instanceID)+"/discover?field=entities", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var options []discoveredOptionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &options); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	if len(options) != 1 || options[0].Label != "Entity One (api_key=secret-123)" {
+		t.Fatalf("options = %+v, want the plugin's own config value passed through", options)
 	}
 }
 
@@ -569,7 +628,7 @@ func TestOAuthAdminEndpointsRequireAuth(t *testing.T) {
 	for _, req := range []*http.Request{
 		httptest.NewRequest(http.MethodGet, "/api/admin/plugins/instances/1/oauth/authorize", nil),
 		httptest.NewRequest(http.MethodDelete, "/api/admin/plugins/instances/1/oauth", nil),
-		httptest.NewRequest(http.MethodGet, "/api/admin/plugins/instances/1/oauth/discover?field=calendars", nil),
+		httptest.NewRequest(http.MethodGet, "/api/admin/plugins/instances/1/discover?field=calendars", nil),
 	} {
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)

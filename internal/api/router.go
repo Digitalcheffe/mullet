@@ -60,7 +60,7 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	adminMux.HandleFunc("POST /api/admin/plugins/instances/{id}/test", handleTestPluginInstance(sched))
 	adminMux.HandleFunc("GET /api/admin/plugins/instances/{id}/oauth/authorize", handleOAuthAuthorize(sqldb, registry, pending))
 	adminMux.HandleFunc("DELETE /api/admin/plugins/instances/{id}/oauth", handleDeauthorizePluginInstance(sqldb, sched))
-	adminMux.HandleFunc("GET /api/admin/plugins/instances/{id}/oauth/discover", handleOAuthDiscover(sqldb, registry))
+	adminMux.HandleFunc("GET /api/admin/plugins/instances/{id}/discover", handleDiscover(sqldb, registry))
 
 	adminMux.HandleFunc("GET /api/admin/themes", handleListThemes(sqldb))
 	adminMux.HandleFunc("POST /api/admin/themes", handleCreateTheme(sqldb))

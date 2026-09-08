@@ -3,7 +3,6 @@ package clock
 import (
 	"context"
 	"testing"
-	"time"
 
 	plugindata "github.com/Digitalcheffe/mullet/internal/plugins/data"
 )
@@ -24,8 +23,8 @@ func TestClockPlugin(t *testing.T) {
 	if p.ID() != "clock" {
 		t.Errorf("ID() = %q, want %q", p.ID(), "clock")
 	}
-	if p.DataShape() != "" {
-		t.Errorf("DataShape() = %q, want empty (no contract)", p.DataShape())
+	if len(p.DataShapes()) != 0 {
+		t.Errorf("DataShapes() = %v, want empty (no contract)", p.DataShapes())
 	}
 	if len(p.Manifest().SetupFields) != 0 {
 		t.Errorf("Manifest().SetupFields has %d fields, want 0", len(p.Manifest().SetupFields))
@@ -38,14 +37,7 @@ func TestClockPlugin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
-	if len(rows) != 1 {
-		t.Fatalf("Fetch returned %d rows, want 1", len(rows))
-	}
-	got, ok := rows[0].(time.Time)
-	if !ok {
-		t.Fatalf("Fetch row is %T, want time.Time", rows[0])
-	}
-	if time.Since(got) > time.Second {
-		t.Errorf("Fetch returned a stale time: %v", got)
+	if len(rows) != 0 {
+		t.Errorf("Fetch returned %d shapes, want 0", len(rows))
 	}
 }

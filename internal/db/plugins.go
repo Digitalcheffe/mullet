@@ -7,16 +7,18 @@ import (
 )
 
 // PluginInstance is a configured data plugin instance loaded from
-// data_plugin_instances.
+// data_plugin_instances. Config is the raw JSON blob from the setup
+// wizard, passed to DataPlugin.Configure before the plugin is scheduled.
 type PluginInstance struct {
 	ID              int
 	PluginID        string
+	Config          string
 	RefreshInterval time.Duration
 }
 
 // LoadEnabledPluginInstances returns every enabled plugin instance.
 func LoadEnabledPluginInstances(sqldb *sql.DB) ([]PluginInstance, error) {
-	rows, err := sqldb.Query(`SELECT id, plugin_id, refresh_seconds FROM data_plugin_instances WHERE enabled = 1`)
+	rows, err := sqldb.Query(`SELECT id, plugin_id, config, refresh_seconds FROM data_plugin_instances WHERE enabled = 1`)
 	if err != nil {
 		return nil, fmt.Errorf("loading plugin instances: %w", err)
 	}
@@ -26,7 +28,7 @@ func LoadEnabledPluginInstances(sqldb *sql.DB) ([]PluginInstance, error) {
 	for rows.Next() {
 		var inst PluginInstance
 		var refreshSeconds int
-		if err := rows.Scan(&inst.ID, &inst.PluginID, &refreshSeconds); err != nil {
+		if err := rows.Scan(&inst.ID, &inst.PluginID, &inst.Config, &refreshSeconds); err != nil {
 			return nil, fmt.Errorf("scanning plugin instance: %w", err)
 		}
 		inst.RefreshInterval = time.Duration(refreshSeconds) * time.Second

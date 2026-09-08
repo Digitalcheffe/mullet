@@ -20,9 +20,9 @@ func init() {
 	}
 }
 
-// Plugin reports the current time. It writes to no shape -- the clock UI
-// plugin reads the browser's local time directly -- so Fetch exists only
-// to satisfy and exercise the DataPlugin interface.
+// Plugin writes to no shape -- the clock UI plugin reads the browser's
+// local time directly -- so Fetch exists only to satisfy and exercise the
+// DataPlugin interface.
 type Plugin struct{}
 
 // New returns a clock plugin instance.
@@ -36,24 +36,24 @@ func (p *Plugin) Manifest() plugindata.DataPluginManifest {
 		ID:                  ID,
 		Name:                "Clock",
 		Description:         "System clock. No external data fetch, no configuration.",
-		DataShape:           "",
+		DataShapes:          nil,
 		AuthType:            "none",
 		RecommendedInterval: time.Minute,
 		MinInterval:         time.Second,
 	}
 }
 
-// DataShape is empty: clock has no framework or custom contract.
-func (p *Plugin) DataShape() string { return "" }
+// DataShapes is empty: clock has no framework or custom contract.
+func (p *Plugin) DataShapes() []string { return nil }
 
 func (p *Plugin) RefreshInterval() time.Duration { return time.Minute }
 
 // Configure is a no-op: the manifest declares zero setup fields.
 func (p *Plugin) Configure(cfg map[string]any) error { return nil }
 
-// Fetch returns the current time. The scheduler skips the write path for
-// plugins with an empty DataShape, so this value isn't persisted -- it
-// demonstrates the interface working, which is this plugin's whole job.
-func (p *Plugin) Fetch(ctx context.Context) ([]any, error) {
-	return []any{time.Now()}, nil
+// Fetch returns an empty map: with no declared shapes, there's nothing
+// for the scheduler to persist. Its being called at all, without error,
+// on schedule, is what this plugin exists to prove.
+func (p *Plugin) Fetch(ctx context.Context) (map[string][]any, error) {
+	return map[string][]any{}, nil
 }

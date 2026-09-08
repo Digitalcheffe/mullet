@@ -170,14 +170,17 @@ type discoveredOptionResponse struct {
 	Label string `json:"label"`
 }
 
-// handleOAuthDiscover backs a "populated after OAuth" SetupField (e.g.
-// msgraph-calendar's "calendars": there's no way to know which calendars
-// exist until the admin has actually authorized *an* account). Requires
-// the instance to be authorized already -- a plugin's Discover needs a
-// working access token the same way Fetch does. Runs through
+// handleDiscover backs a "populated after setup" SetupField (any
+// plugin's, not just an OAuth2 one -- msgraph-calendar's "calendars"
+// needs a live token; home-assistant's "entities" just needs the URL/
+// token the admin already typed in, since AuthType "api_key" has no
+// separate authorization step at all). For an OAuth2 plugin specifically,
+// a fresh access token is injected under "access_token" first, the same
+// way the scheduler does before Configure/Fetch -- every other plugin's
+// own config already has everything Discover needs, as-is. Runs through
 // Registry.WithPlugin like Configure/Fetch, so it can't race a concurrent
 // scheduled tick on the same plugin type's shared object.
-func handleOAuthDiscover(sqldb *sql.DB, registry *plugindata.Registry) http.HandlerFunc {
+func handleDiscover(sqldb *sql.DB, registry *plugindata.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		instanceID, err := strconv.Atoi(r.PathValue("id"))
 		if err != nil {
@@ -190,33 +193,41 @@ func handleOAuthDiscover(sqldb *sql.DB, registry *plugindata.Registry) http.Hand
 			return
 		}
 
-		inst, manifest, err := loadOAuthPlugin(sqldb, registry, instanceID)
+		inst, err := db.GetPluginInstance(sqldb, instanceID)
 		if errors.Is(err, db.ErrNotFound) {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-
-		oauthCfg, err := oauth.ConfigFromManifest(manifest, inst.Config, "")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		plugin, ok := registry.Get(inst.PluginID)
+		if !ok {
+			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		token, err := oauth.EnsureFreshToken(r.Context(), sqldb, instanceID, oauthCfg)
-		if err != nil {
-			http.Error(w, "not authorized yet", http.StatusConflict)
-			return
-		}
+		manifest := plugin.Manifest()
 
 		cfg := map[string]any{}
 		if err := json.Unmarshal([]byte(inst.Config), &cfg); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		cfg["access_token"] = token
+
+		if manifest.AuthType == "oauth2" {
+			oauthCfg, err := oauth.ConfigFromManifest(manifest, inst.Config, "")
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			token, err := oauth.EnsureFreshToken(r.Context(), sqldb, instanceID, oauthCfg)
+			if err != nil {
+				http.Error(w, "not authorized yet", http.StatusConflict)
+				return
+			}
+			cfg["access_token"] = token
+		}
 
 		var options []plugindata.DiscoveredOption
 		var discoverErr error

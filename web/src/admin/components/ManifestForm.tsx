@@ -46,12 +46,15 @@ interface ManifestFormProps {
   submitLabel: string;
   onSubmit: (values: ManifestFormValues) => Promise<void>;
   onCancel: () => void;
-  // instanceId/oauthAuthorized are only present in 'edit' mode -- a
+  // instanceId/oauthAuthorized are only present in 'edit' mode. A
   // Dynamic field's real options can't be fetched before the instance
-  // exists and has been authorized, since discovery needs a live token
-  // scoped to one specific instance. apiFetch is the admin's own
-  // authenticated fetch (see useApiFetch), needed to call the discover
-  // endpoint.
+  // exists, since discovery is scoped to one specific instance's own
+  // config -- and for an OAuth2 plugin specifically, not before it's
+  // been authorized either, since discovery there needs a live token.
+  // A non-OAuth2 plugin (e.g. home-assistant's static token) has no such
+  // extra step: oauthAuthorized is simply ignored for it. apiFetch is
+  // the admin's own authenticated fetch (see useApiFetch), needed to
+  // call the discover endpoint.
   instanceId?: number;
   oauthAuthorized?: boolean;
   apiFetch?: (path: string, init?: RequestInit) => Promise<Response>;
@@ -80,14 +83,18 @@ export default function ManifestForm({
   const [discovered, setDiscovered] = useState<Record<string, DiscoveredOption[]>>({});
   const [discovering, setDiscovering] = useState<Record<string, boolean>>({});
 
-  const canDiscover = Boolean(instanceId && oauthAuthorized && apiFetch);
+  // An OAuth2 plugin needs the extra authorize step before discovery can
+  // work; any other AuthType's instance config already has everything
+  // Discover needs the moment the instance exists.
+  const requiresAuthorize = manifest.auth_type === 'oauth2';
+  const canDiscover = Boolean(instanceId && (!requiresAuthorize || oauthAuthorized) && apiFetch);
 
   useEffect(() => {
     if (!canDiscover) return;
     for (const field of manifest.setup_fields) {
       if (!field.dynamic) continue;
       setDiscovering((d) => ({ ...d, [field.key]: true }));
-      apiFetch!(`/api/admin/plugins/instances/${instanceId}/oauth/discover?field=${encodeURIComponent(field.key)}`)
+      apiFetch!(`/api/admin/plugins/instances/${instanceId}/discover?field=${encodeURIComponent(field.key)}`)
         .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`status ${res.status}`))))
         .then((options: DiscoveredOption[]) => setDiscovered((d) => ({ ...d, [field.key]: options })))
         .catch(() => setDiscovered((d) => ({ ...d, [field.key]: [] })))
@@ -200,7 +207,7 @@ function SetupFieldInput({
       return (
         <div className="field">
           <span className="kicker">{field.label}</span>
-          <p className="field-help">{field.help_text || 'Save and authorize this instance first, then edit it to choose specific values.'}</p>
+          <p className="field-help">{field.help_text || 'Save this instance first (and authorize it, if it needs that), then edit it to choose specific values.'}</p>
         </div>
       );
     }

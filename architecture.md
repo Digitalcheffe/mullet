@@ -141,6 +141,7 @@ interleave with a scheduled tick on the same plugin type.
 | `ics-feed` | `events` | none, or HTTP basic auth | Universal ICS/iCal calendar connector; one plugin instance = one feed/calendar (add the plugin again for a second feed) |
 | `msgraph-calendar` | `events` | OAuth2 | Outlook/Microsoft 365 calendar via Microsoft Graph. Consumer accounts only (`tenant` defaults to `"consumers"`) -- see [OAuth2](#oauth2-built) |
 | `msgraph-todo` | `tasks` | OAuth2 | Microsoft To-Do via Microsoft Graph. Same consumer-account scope as `msgraph-calendar` |
+| `home-assistant` | `home_devices` | API key (long-lived access token) | Lights, locks, covers, binary sensors, sensors, climate via Home Assistant's own REST API -- no OAuth2 flow at all; area grouping is a best-effort template-rendering lookup, see [Discovery](#oauth2-built) |
 
 ---
 
@@ -215,23 +216,31 @@ Admin UI: `PluginsPage.tsx` shows Authorize (or Re-authorize + Revoke,
 once `pluginInstanceResponse.oauth_authorized` is true) on any instance
 of an `auth_type: "oauth2"` plugin.
 
-**Discovery** (#25): a `SetupField` can be marked `Dynamic: true`
-(`internal/plugins/data/plugin.go`) when its real choices only exist
-once an instance has live credentials to ask the provider with --
-`msgraph-calendar`'s "calendars" and `msgraph-todo`'s "task_lists" are
-the two so far ("which of your Outlook calendars" can't be known before
-OAuth). Its manifest `Options` stays empty; the plugin instead
-implements `plugindata.Discoverable` (`Discover(ctx, field, cfg) →
+**Discovery** (#25, generalized beyond OAuth2 in #27): a `SetupField`
+can be marked `Dynamic: true` (`internal/plugins/data/plugin.go`) when
+its real choices only exist once an instance has live credentials to
+ask the provider with -- `msgraph-calendar`'s "calendars",
+`msgraph-todo`'s "task_lists", and `home-assistant`'s "entities" so far.
+Its manifest `Options` stays empty; the plugin instead implements
+`plugindata.Discoverable` (`Discover(ctx, field, cfg) →
 []DiscoveredOption`, an optional interface a plugin opts into, not part
-of `DataPlugin` itself), and `GET .../oauth/discover?field=...` calls it
-through the same `Registry.WithPlugin` serialization as `Configure`/
-`Fetch`, with a freshly-ensured token injected into `cfg` the same way
-the scheduler does. `ManifestForm.tsx` fetches this itself, once an
-instance both exists and is authorized (impossible before that -- you
-can't discover a specific account's calendars before picking one), and
-renders the result as an ordinary multi-select; before that, or while
-the instance is still just being added, it shows a plain "authorize
-first" note instead of a non-functional empty select.
+of `DataPlugin` itself), and `GET
+.../plugins/instances/{id}/discover?field=...` (`handleDiscover`,
+`internal/api/oauth_handlers.go`) calls it through the same
+`Registry.WithPlugin` serialization as `Configure`/`Fetch`. Only for an
+`AuthType: "oauth2"` instance does the handler inject a freshly-ensured
+token into `cfg` first, the same way the scheduler does -- a plain
+`AuthType: "api_key"` plugin like `home-assistant` needs nothing beyond
+its own already-saved config (URL + token), since a long-lived access
+token works immediately with no separate authorize step to gate
+discovery behind. `ManifestForm.tsx` fetches this itself once an
+instance exists, and -- only when its plugin is `oauth2` -- is also
+authorized (impossible before that for an OAuth2 plugin -- you can't
+discover a specific account's calendars before picking one); a
+non-OAuth2 instance can discover as soon as it's saved. Before that, or
+while the instance is still just being added, it shows a plain "save
+this instance first (and authorize it, if it needs that)" note instead
+of a non-functional empty select.
 `validateSetupFields` (`internal/api/plugin_handlers.go`) skips its
 usual against-`Options` check for a `Dynamic` field, since discovered
 values are never in the manifest's own (empty) `Options` list to check
@@ -364,7 +373,7 @@ All routes below are wired in `internal/api/router.go`.
 | `POST /api/admin/plugins/instances/{id}/test` | JWT | Run one configure+fetch cycle now, report success/error |
 | `GET /api/admin/plugins/instances/{id}/oauth/authorize` | JWT | Returns `{authorize_url}` for an OAuth2 plugin instance -- JSON, not a redirect, since the caller can't carry a Bearer header through a real browser navigation; see [OAuth2](#oauth2-built) |
 | `DELETE /api/admin/plugins/instances/{id}/oauth` | JWT | De-authorize an instance (deletes its stored token; the instance itself stays) |
-| `GET /api/admin/plugins/instances/{id}/oauth/discover?field=...` | JWT | Live options for a `Dynamic` SetupField (requires the instance to already be authorized) -- see [OAuth2](#oauth2-built) |
+| `GET /api/admin/plugins/instances/{id}/discover?field=...` | JWT | Live options for a `Dynamic` SetupField (for an `oauth2` plugin, requires the instance to already be authorized; any other `AuthType` just needs the instance saved) -- see [Discovery](#oauth2-built) |
 | `GET /api/oauth/callback` | none (see [OAuth2](#oauth2-built)) | The OAuth2 provider's redirect target after consent; exchanges the code, stores the token, redirects to `/admin/plugins?oauth=...` |
 | `GET`/`POST /api/admin/themes` | JWT | List / create themes |
 | `GET`/`PUT`/`DELETE /api/admin/themes/{id}` | JWT | Get / update / remove a theme (`DELETE` is `409` if a display still uses it) |

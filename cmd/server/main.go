@@ -26,6 +26,7 @@ import (
 	// new plugin means implementing DataPlugin and blank-importing its
 	// package here.
 	_ "github.com/Digitalcheffe/mullet/internal/plugins/data/clock"
+	_ "github.com/Digitalcheffe/mullet/internal/plugins/data/homeassistant"
 	_ "github.com/Digitalcheffe/mullet/internal/plugins/data/icsfeed"
 	_ "github.com/Digitalcheffe/mullet/internal/plugins/data/msgraphcalendar"
 	_ "github.com/Digitalcheffe/mullet/internal/plugins/data/msgraphtodo"

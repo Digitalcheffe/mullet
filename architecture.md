@@ -203,6 +203,15 @@ Admin UI: `PluginsPage.tsx` shows Authorize (or Re-authorize + Revoke,
 once `pluginInstanceResponse.oauth_authorized` is true) on any instance
 of an `auth_type: "oauth2"` plugin.
 
+**Encryption at rest**: `access_token`/`refresh_token` are AES-256-GCM
+encrypted before being written to `oauth_tokens` and decrypted
+transparently on read (`internal/db/oauth_encryption.go`) -- every
+caller (`GetOAuthToken`/`UpsertOAuthToken`) just sees plaintext, same as
+before. The key is generated once and persisted in `system_settings`
+(`oauth_token_encryption_key`), the same self-provisioning pattern as
+`auth.LoadOrCreateJWTSecret`. `scopes`/`expires_at` aren't secrets and
+stay plain.
+
 ---
 
 ## Data Shapes (Built)

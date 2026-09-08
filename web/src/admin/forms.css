@@ -1,0 +1,89 @@
+/* Shared form primitives for Settings, Login, and the Setup wizard. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field input,
+.field select {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font: 600 13px var(--font-body);
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.field input:focus,
+.field select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.btn-primary {
+  font: 700 13px var(--font-body);
+  color: #3a1b0e;
+  background: var(--accent);
+  border: none;
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+}
+.btn-primary:hover {
+  background: var(--accent-deep);
+  color: #fff;
+}
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.save-note {
+  font: 600 12.5px var(--font-body);
+}
+.save-note.ok {
+  color: var(--ok);
+}
+.save-note.error {
+  color: var(--error);
+}
+
+.form-error {
+  font: 600 12.5px var(--font-body);
+  color: var(--error);
+  background: var(--error-bg);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+
+/* Centered card layout shared by LoginPage and SetupWizard. */
+.auth-page {
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-card h1 {
+  font: 700 22px var(--font-heading);
+}
+
+.auth-card p {
+  font: 500 13px var(--font-body);
+  color: var(--ink-soft);
+  margin: -8px 0 0;
+}

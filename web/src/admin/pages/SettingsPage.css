@@ -1,0 +1,45 @@
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 520px;
+}
+
+.settings-page h1 {
+  font: 700 24px var(--font-heading);
+}
+
+.settings-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-readonly {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.readonly-value {
+  font: 600 13px var(--font-body);
+  color: var(--ink-soft);
+}

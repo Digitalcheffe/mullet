@@ -15,33 +15,38 @@ export default function AdminApp() {
   );
 }
 
+interface SetupStatus {
+  required: boolean;
+  auth_disabled?: boolean;
+}
+
 function AdminShell() {
   const { isAuthenticated, username, logout } = useAuth();
   // null while the first-run check is in flight.
-  const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
+  const [status, setStatus] = useState<SetupStatus | null>(null);
 
   useEffect(() => {
     fetch('/api/admin/setup')
       .then((res) => res.json())
-      .then((body: { required: boolean }) => setSetupRequired(body.required))
-      .catch(() => setSetupRequired(false));
+      .then((body: SetupStatus) => setStatus(body))
+      .catch(() => setStatus({ required: false }));
   }, []);
 
-  if (setupRequired === null) {
+  if (status === null) {
     return <p>Loading…</p>;
   }
 
-  if (setupRequired) {
-    return <SetupWizard onComplete={() => setSetupRequired(false)} />;
+  if (status.required) {
+    return <SetupWizard onComplete={() => setStatus({ ...status, required: false })} />;
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !status.auth_disabled) {
     return <LoginPage />;
   }
 
   return (
     <Routes>
-      <Route element={<AdminLayout username={username!} onSignOut={logout} />}>
+      <Route element={<AdminLayout username={status.auth_disabled ? 'dev' : username!} onSignOut={logout} />}>
         <Route index element={<Dashboard />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>

@@ -47,11 +47,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	if cfg.AuthDisabled {
+		log.Println("WARNING: AUTH_DISABLED=true -- the admin API and UI require no login. Local dev only; never set this in a real deployment.")
+	}
+
 	router := api.NewRouter(sqldb, jwtSecret, cfg.CORSOrigins, api.ServerInfo{
 		Port:      cfg.Port,
 		DBPath:    cfg.DBPath,
 		StartedAt: startedAt,
-	}, cfg.StaticDir)
+	}, cfg.StaticDir, cfg.AuthDisabled)
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: router}
 
 	go func() {

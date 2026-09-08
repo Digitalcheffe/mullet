@@ -68,12 +68,24 @@ func withCORS(allowedOrigins []string) func(http.Handler) http.Handler {
 	}
 }
 
+// devClaims stands in for a real session when authDisabled bypasses the
+// token check entirely.
+var devClaims = &auth.Claims{UserID: 0, Username: "dev"}
+
 // requireAuth rejects requests without a valid "Authorization: Bearer
 // <jwt>" header with 401, and otherwise attaches the token's claims to
-// the request context for downstream handlers.
-func requireAuth(secret []byte) func(http.Handler) http.Handler {
+// the request context for downstream handlers. With authDisabled, every
+// request passes through unauthenticated -- local dev only, never set
+// this in a real deployment.
+func requireAuth(secret []byte, authDisabled bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if authDisabled {
+				ctx := context.WithValue(r.Context(), claimsContextKey, devClaims)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
 			tokenString, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 			if !ok || tokenString == "" {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)

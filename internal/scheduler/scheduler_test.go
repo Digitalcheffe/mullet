@@ -23,12 +23,20 @@ type fakePlugin struct {
 	failWith      error
 	failConfigure error
 	lastConfig    map[string]any
+	oauth2        bool // Manifest() reports AuthType "oauth2" when set
 }
 
 func (f *fakePlugin) ID() string   { return f.id }
 func (f *fakePlugin) Name() string { return f.id }
 func (f *fakePlugin) Manifest() plugindata.DataPluginManifest {
-	return plugindata.DataPluginManifest{ID: f.id}
+	m := plugindata.DataPluginManifest{ID: f.id}
+	if f.oauth2 {
+		m.AuthType = "oauth2"
+		m.OAuthConfig = &plugindata.OAuthConfig{
+			AuthURL: "https://example.com/authorize", TokenURL: "https://example.com/token",
+		}
+	}
+	return m
 }
 func (f *fakePlugin) DataShapes() []string {
 	if f.shape == "" {
@@ -207,6 +215,72 @@ func TestStartConfiguresPluginFromStoredConfig(t *testing.T) {
 
 	if plugin.lastConfig["api_key"] != "secret" || plugin.lastConfig["location"] != "Seattle" {
 		t.Errorf("lastConfig = %v, want api_key=secret location=Seattle", plugin.lastConfig)
+	}
+}
+
+func TestStartInjectsFreshOAuthAccessToken(t *testing.T) {
+	sqldb := newTestDB(t)
+	instanceID, err := db.CreatePluginInstance(sqldb, "msgraph-calendar", "Work", 900, true, `{"client_id":"abc","client_secret":"xyz","tenant":"consumers"}`)
+	if err != nil {
+		t.Fatalf("CreatePluginInstance: %v", err)
+	}
+	if err := db.UpsertOAuthToken(sqldb, instanceID, "still-fresh-token", nil, time.Now().Add(time.Hour), "Calendars.Read"); err != nil {
+		t.Fatalf("UpsertOAuthToken: %v", err)
+	}
+
+	plugin := &fakePlugin{id: "msgraph-calendar", interval: time.Hour, oauth2: true}
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(plugin); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	s := New(sqldb, registry)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	s.Stop()
+
+	if plugin.lastConfig["access_token"] != "still-fresh-token" {
+		t.Errorf("lastConfig[access_token] = %v, want still-fresh-token", plugin.lastConfig["access_token"])
+	}
+	// The plugin's own declared config must still come through alongside
+	// the injected token, not be replaced by it.
+	if plugin.lastConfig["client_id"] != "abc" {
+		t.Errorf("lastConfig[client_id] = %v, want abc", plugin.lastConfig["client_id"])
+	}
+}
+
+func TestStartSkipsUnauthorizedOAuthInstance(t *testing.T) {
+	sqldb := newTestDB(t)
+	instanceID, err := db.CreatePluginInstance(sqldb, "msgraph-calendar", "Work", 900, true, `{"client_id":"abc","client_secret":"xyz","tenant":"consumers"}`)
+	if err != nil {
+		t.Fatalf("CreatePluginInstance: %v", err)
+	}
+	// Deliberately never authorized -- no oauth_tokens row for this instance.
+
+	plugin := &fakePlugin{id: "msgraph-calendar", interval: 10 * time.Millisecond, oauth2: true}
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(plugin); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	s := New(sqldb, registry)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	time.Sleep(30 * time.Millisecond)
+	s.Stop()
+
+	if plugin.calls.Load() != 0 {
+		t.Errorf("Fetch was called %d times for an unauthorized instance, want 0", plugin.calls.Load())
+	}
+
+	var lastError *string
+	if err := sqldb.QueryRow(`SELECT last_error FROM data_plugin_instances WHERE id = ?`, instanceID).Scan(&lastError); err != nil {
+		t.Fatalf("reading last_error: %v", err)
+	}
+	if lastError == nil {
+		t.Error("last_error is nil, want it recorded (never authorized)")
 	}
 }
 

@@ -59,7 +59,8 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	adminMux.HandleFunc("DELETE /api/admin/plugins/instances/{id}", handleDeletePluginInstance(sqldb, sched))
 	adminMux.HandleFunc("POST /api/admin/plugins/instances/{id}/test", handleTestPluginInstance(sched))
 	adminMux.HandleFunc("GET /api/admin/plugins/instances/{id}/oauth/authorize", handleOAuthAuthorize(sqldb, registry, pending))
-	adminMux.HandleFunc("DELETE /api/admin/plugins/instances/{id}/oauth", handleDeauthorizePluginInstance(sqldb))
+	adminMux.HandleFunc("DELETE /api/admin/plugins/instances/{id}/oauth", handleDeauthorizePluginInstance(sqldb, sched))
+	adminMux.HandleFunc("GET /api/admin/plugins/instances/{id}/oauth/discover", handleOAuthDiscover(sqldb, registry))
 
 	adminMux.HandleFunc("GET /api/admin/themes", handleListThemes(sqldb))
 	adminMux.HandleFunc("POST /api/admin/themes", handleCreateTheme(sqldb))
@@ -103,7 +104,7 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	// from the single-use, short-lived `state` param minted only by
 	// handleOAuthAuthorize (which *is* behind requireAuth) -- see
 	// internal/oauth.PendingStore.
-	mux.HandleFunc("GET /api/oauth/callback", handleOAuthCallback(sqldb, registry, pending))
+	mux.HandleFunc("GET /api/oauth/callback", handleOAuthCallback(sqldb, registry, pending, sched))
 
 	// /api/clients/* -- dedicated client app registration/polling, no
 	// auth (clients are admin-approved). Handlers land in issue #29.

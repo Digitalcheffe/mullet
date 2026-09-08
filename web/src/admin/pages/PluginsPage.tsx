@@ -248,6 +248,9 @@ export default function PluginsPage() {
                   : submitInstance(panel.manifest.id, values, `/api/admin/plugins/instances/${panel.instance.id}`, 'PUT')
               }
               onCancel={() => setPanel(null)}
+              instanceId={panel.mode === 'edit' ? panel.instance.id : undefined}
+              oauthAuthorized={panel.mode === 'edit' ? panel.instance.oauth_authorized : undefined}
+              apiFetch={apiFetch}
             />
           </div>
         </div>

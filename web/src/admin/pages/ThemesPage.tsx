@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApiFetch } from '../auth/useApiFetch';
 import type { ThemeTokens } from '../../shared/themes/tokens';
+import { downloadJSON, slugify } from '../../shared/downloadJSON';
 import './ThemesPage.css';
 
 interface Theme {
@@ -34,6 +35,10 @@ export default function ThemesPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  function handleExport(theme: Theme) {
+    downloadJSON(`${slugify(theme.name)}.json`, theme.tokens);
+  }
 
   async function handleDelete(theme: Theme) {
     if (!confirm(`Delete theme "${theme.name}"?`)) return;
@@ -80,6 +85,9 @@ export default function ThemesPage() {
               </div>
               <button className="btn-secondary" onClick={() => navigate(`/admin/themes/${t.id}`)}>
                 Edit
+              </button>
+              <button className="btn-secondary" onClick={() => handleExport(t)}>
+                Export
               </button>
               <button className="btn-danger" onClick={() => handleDelete(t)}>
                 Delete

@@ -1,9 +1,11 @@
-import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApiFetch } from '../auth/useApiFetch';
 import ThemeTokenFields from '../components/ThemeTokenFields';
 import { backgroundCSS, defaultTheme, type ThemeTokens } from '../../shared/themes/tokens';
 import { themePresets } from '../../shared/themes/presets';
+import { validateThemeTokens } from '../../shared/themes/validateTokens';
+import { downloadJSON, slugify } from '../../shared/downloadJSON';
 import './ThemeEditorPage.css';
 
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
@@ -53,6 +55,7 @@ export default function ThemeEditorPage() {
   const [loading, setLoading] = useState(!isNew);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     if (isNew) return;
@@ -104,6 +107,14 @@ export default function ThemeEditorPage() {
           ← Back to Themes
         </button>
         <h1>{isNew ? 'New Theme' : `Edit ${name || 'Theme'}`}</h1>
+        <div className="theme-editor-header-actions">
+          <button type="button" className="btn-secondary" onClick={() => setImportOpen(true)}>
+            Import
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => downloadJSON(`${slugify(name)}.json`, tokens)}>
+            Export
+          </button>
+        </div>
       </div>
 
       {isNew && (
@@ -189,6 +200,91 @@ export default function ThemeEditorPage() {
           </div>
         </div>
       </form>
+
+      {importOpen && (
+        <div className="modal-scrim" onClick={() => setImportOpen(false)}>
+          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+            <ImportTokensModal
+              onApply={(imported) => {
+                setTokens(imported);
+                setImportOpen(false);
+              }}
+              onCancel={() => setImportOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ImportTokensModalProps {
+  onApply: (tokens: ThemeTokens) => void;
+  onCancel: () => void;
+}
+
+// Import doesn't touch the saved theme at all -- it only populates the
+// editor's own in-memory fields (and, through those, the live preview),
+// same as typing values in by hand. The admin still has to review and
+// hit "Save theme" for anything to actually persist.
+function ImportTokensModal({ onApply, onCancel }: ImportTokensModalProps) {
+  const [text, setText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  function applyText(raw: string) {
+    setError(null);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      setError('Not valid JSON.');
+      return;
+    }
+    const result = validateThemeTokens(parsed);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    onApply(result.tokens);
+  }
+
+  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    file.text().then((content) => {
+      setText(content);
+      applyText(content);
+    });
+    e.target.value = ''; // allow re-selecting the same file later
+  }
+
+  return (
+    <div className="manifest-form">
+      <h2>Import Theme</h2>
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+
+      <label className="field">
+        <span className="kicker">Upload a .json file</span>
+        <input type="file" accept="application/json,.json" onChange={handleFileChange} />
+      </label>
+
+      <label className="field">
+        <span className="kicker">Or paste JSON</span>
+        <textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} placeholder="{ ... }" />
+      </label>
+
+      <div className="manifest-form-actions">
+        <button type="button" className="btn-secondary" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="button" className="btn-primary" onClick={() => applyText(text)} disabled={text.trim() === ''}>
+          Validate &amp; Apply
+        </button>
+      </div>
     </div>
   );
 }

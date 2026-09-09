@@ -29,6 +29,7 @@ COPY --from=web-builder /src/web/dist ./web/dist
 
 ENV PORT=8080
 ENV DB_PATH=/data/mullet.db
+ENV UPLOADS_DIR=/data/uploads
 ENV STATIC_DIR=/app/web/dist
 
 EXPOSE 8080

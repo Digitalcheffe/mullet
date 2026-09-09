@@ -45,7 +45,7 @@ func TestRouterServesFrontendWithoutShadowingAPI(t *testing.T) {
 
 	sqldb := newTestUserDB(t)
 	registry, sched := newTestSchedulerDeps(t, sqldb)
-	router := NewRouter(sqldb, []byte(testJWTSecret), nil, testServerInfo(), staticDir, false, registry, sched)
+	router := NewRouter(sqldb, []byte(testJWTSecret), nil, testServerInfo(), staticDir, false, registry, sched, t.TempDir())
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin/settings", nil))

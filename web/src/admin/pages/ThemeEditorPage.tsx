@@ -57,6 +57,20 @@ export default function ThemeEditorPage() {
   const [submitting, setSubmitting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
+  async function uploadImage(file: File): Promise<string> {
+    const formData = new FormData();
+    formData.append('file', file);
+    // No Content-Type header here -- the browser sets the multipart
+    // boundary itself from the FormData body; setting one manually
+    // would omit the boundary parameter and break parsing server-side.
+    const res = await apiFetch('/api/admin/uploads', { method: 'POST', body: formData });
+    if (!res.ok) {
+      throw new Error(await readErrorMessage(res, 'Upload failed'));
+    }
+    const body: { url: string } = await res.json();
+    return body.url;
+  }
+
   useEffect(() => {
     if (isNew) return;
     apiFetch(`/api/admin/themes/${themeId}`)
@@ -170,7 +184,7 @@ export default function ThemeEditorPage() {
             <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
           </label>
 
-          <ThemeTokenFields values={tokens} onChange={(v) => setTokens((prev) => ({ ...prev, ...v }))} />
+          <ThemeTokenFields values={tokens} onChange={(v) => setTokens((prev) => ({ ...prev, ...v }))} onUploadImage={uploadImage} />
 
           <div className="manifest-form-actions">
             <button type="button" className="btn-secondary" onClick={() => navigate('/admin/themes')}>

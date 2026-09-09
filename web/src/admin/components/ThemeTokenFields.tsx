@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import type { ThemeTokens } from '../../shared/themes/tokens';
 import './ThemeTokenFields.css';
 
@@ -24,14 +25,37 @@ interface ThemeTokenFieldsProps {
   // color) rather than let one card override a display's whole look.
   // Omit for the full set, used by the Theme editor itself.
   fields?: ThemeTokenKey[];
+  // Uploads a file (issue #58) and resolves to the URL it's now
+  // reachable at, for the "Image" background type's "Upload image"
+  // button -- omitted entirely (no button rendered) by the Designer's
+  // narrow card-override editor, which never shows the background
+  // field in the first place; only the full Theme editor passes this.
+  onUploadImage?: (file: File) => Promise<string>;
 }
 
-export default function ThemeTokenFields({ values, onChange, fields = ALL_FIELDS }: ThemeTokenFieldsProps) {
+export default function ThemeTokenFields({ values, onChange, fields = ALL_FIELDS, onUploadImage }: ThemeTokenFieldsProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   function set<K extends ThemeTokenKey>(key: K, value: ThemeTokens[K]) {
     onChange({ ...values, [key]: value });
   }
 
   const show = (key: ThemeTokenKey) => fields.includes(key);
+
+  async function handleFileSelected(file: File) {
+    if (!onUploadImage) return;
+    setUploadError(null);
+    setUploading(true);
+    try {
+      const url = await onUploadImage(file);
+      set('background', { type: 'image', value: url });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <div className="theme-token-fields">
@@ -57,13 +81,36 @@ export default function ThemeTokenFields({ values, onChange, fields = ALL_FIELDS
               onChange={(e) => set('background', { type: values.background?.type ?? 'solid', value: e.target.value })}
               placeholder={
                 values.background?.type === 'image'
-                  ? 'https://...'
+                  ? 'https://... or upload one'
                   : values.background?.type === 'gradient'
                     ? 'linear-gradient(...)'
                     : '#0b0f14'
               }
             />
+            {values.background?.type === 'image' && onUploadImage && (
+              <>
+                <button type="button" className="btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                  {uploading ? 'Uploading…' : 'Upload image'}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = ''; // allow re-selecting the same file later
+                    if (file) handleFileSelected(file);
+                  }}
+                />
+              </>
+            )}
           </div>
+          {uploadError && (
+            <span className="field-help" style={{ color: 'var(--error)' }}>
+              {uploadError}
+            </span>
+          )}
         </label>
       )}
 

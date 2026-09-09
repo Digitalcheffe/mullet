@@ -21,6 +21,10 @@
   flex: 1;
   min-width: 0;
 }
+.background-field-row button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 
 .color-field-row {
   display: flex;

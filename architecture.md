@@ -706,6 +706,23 @@ panel (#20) now edits `theme_override` through the same field-editor
 component, restricted to a narrow field set (see below) instead of the
 raw JSON box it started with.
 
+**Import/export** (#57): every theme row on `ThemesPage.tsx`, and the
+editor's own header, has an "Export" button that downloads that theme's
+`tokens` as a `.json` file (`downloadJSON`,
+`web/src/shared/downloadJSON.ts` -- a plain Blob + synthetic `<a
+download>` click, no server involvement at all, so it works on whatever
+tokens are currently in the editor, saved or not). The editor's "Import"
+button opens a modal accepting either a file upload or pasted JSON,
+validated strictly against the exact `ThemeTokens` shape
+(`validateThemeTokens`, `web/src/shared/themes/validateTokens.ts`) --
+every field required with the right type, a specific inline error
+naming what's wrong (missing key, wrong type) rather than silently
+backfilling missing fields from `defaultTheme` the way loading an
+existing theme does. A successful import only populates the editor's
+in-memory `tokens` state (and, through that, the live preview) -- it
+never touches the server on its own; the admin still reviews and clicks
+"Save theme" for anything to persist, same as typing values in by hand.
+
 The display side reads and applies a theme too (#23): `DisplayApp.tsx`
 gets it pre-resolved as part of `GET /api/display/{slug}`'s response
 (`useDisplayLayout.ts`, falling back to `defaultTheme` for any token

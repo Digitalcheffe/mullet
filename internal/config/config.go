@@ -10,6 +10,7 @@ import (
 type Config struct {
 	Port         string
 	DBPath       string
+	UploadsDir   string
 	CORSOrigins  []string
 	StaticDir    string
 	AuthDisabled bool
@@ -19,8 +20,13 @@ type Config struct {
 // for anything not set.
 func Load() Config {
 	return Config{
-		Port:         getEnv("PORT", "8080"),
-		DBPath:       getEnv("DB_PATH", "./data/mullet.db"),
+		Port:   getEnv("PORT", "8080"),
+		DBPath: getEnv("DB_PATH", "./data/mullet.db"),
+		// Defaults alongside DB_PATH under the same ./data volume (see
+		// docker-compose.yml) rather than a second Docker volume --
+		// uploaded files need to survive a container restart/update the
+		// same way the database does.
+		UploadsDir:   getEnv("UPLOADS_DIR", "./data/uploads"),
 		CORSOrigins:  getEnvList("CORS_ORIGINS"),
 		StaticDir:    getEnv("STATIC_DIR", "./web/dist"),
 		AuthDisabled: getEnvBool("AUTH_DISABLED"),

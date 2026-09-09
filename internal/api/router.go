@@ -31,7 +31,7 @@ type ServerInfo struct {
 // the plugin management endpoints: sched.Reload() is called after any
 // instance create/update/delete so changes take effect without a
 // restart.
-func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info ServerInfo, staticDir string, authDisabled bool, registry *plugindata.Registry, sched *scheduler.Scheduler) http.Handler {
+func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info ServerInfo, staticDir string, authDisabled bool, registry *plugindata.Registry, sched *scheduler.Scheduler, uploadsDir string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 
@@ -88,6 +88,8 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	adminMux.HandleFunc("GET /api/admin/displays/{id}/offline-screen", handleGetDisplayOfflineScreen(sqldb))
 	adminMux.HandleFunc("PUT /api/admin/displays/{id}/offline-screen", handleSetDisplayOfflineScreen(sqldb))
 
+	adminMux.HandleFunc("POST /api/admin/uploads", handleUploadImage(uploadsDir))
+
 	adminMux.HandleFunc("GET /api/admin/clients", handleListClients(sqldb))
 	adminMux.HandleFunc("PUT /api/admin/clients/{id}/approve", handleApproveClient(sqldb))
 	adminMux.HandleFunc("PUT /api/admin/clients/{id}", handleUpdateClient(sqldb))
@@ -104,6 +106,12 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	// /api/display/{slug} -- the display renderer's own layout fetch, no
 	// auth for the same reason as /api/data above.
 	mux.HandleFunc("GET /api/display/{slug}", handleGetDisplayLayout(sqldb))
+
+	// /uploads/{name} -- admin-uploaded images (issue #58, e.g. a
+	// theme's background), served publicly for the same reason
+	// /api/data is: a display rendering one has no way to attach a
+	// Bearer token.
+	mux.HandleFunc("GET /uploads/{name}", handleServeUpload(uploadsDir))
 
 	// /api/oauth/callback -- the OAuth2 provider's redirect target after
 	// the admin grants or denies consent, deliberately outside

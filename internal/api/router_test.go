@@ -80,7 +80,7 @@ func newTestRouter(t *testing.T, corsOrigins []string) (http.Handler, *sql.DB) {
 	t.Helper()
 	sqldb := newTestUserDB(t)
 	registry, sched := newTestSchedulerDeps(t, sqldb)
-	router := NewRouter(sqldb, []byte(testJWTSecret), corsOrigins, testServerInfo(), t.TempDir(), false, registry, sched)
+	router := NewRouter(sqldb, []byte(testJWTSecret), corsOrigins, testServerInfo(), t.TempDir(), false, registry, sched, t.TempDir())
 	return router, sqldb
 }
 

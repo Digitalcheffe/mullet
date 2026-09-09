@@ -208,7 +208,7 @@ func newTestRouterWithOAuthPlugin(t *testing.T, tokenURL string) (http.Handler, 
 	}
 	t.Cleanup(sched.Stop)
 
-	router := NewRouter(sqldb, []byte(testJWTSecret), nil, testServerInfo(), t.TempDir(), false, registry, sched)
+	router := NewRouter(sqldb, []byte(testJWTSecret), nil, testServerInfo(), t.TempDir(), false, registry, sched, t.TempDir())
 	return router, sqldb
 }
 

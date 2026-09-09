@@ -379,6 +379,8 @@ All routes below are wired in `internal/api/router.go`.
 | `GET`/`PUT`/`DELETE /api/admin/screens/{id}` | JWT | Get / update / remove a screen (delete cascades to its cards) |
 | `GET`/`POST /api/admin/screens/{id}/cards` | JWT | List / create cards on a screen |
 | `PUT`/`DELETE /api/admin/cards/{id}` | JWT | Update / remove a card |
+| `POST /api/admin/uploads` | JWT | Accepts one `multipart/form-data` "file" field (image only, verified by actually decoding it, not by extension/Content-Type; 8 MiB max), returns `{url}` -- see [Theme Cascade](#theme-cascade-built) |
+| `GET /uploads/{name}` | none (LAN-facing, like the display itself) | Serves an admin-uploaded file back -- a display rendering one as its background has no way to attach a Bearer token |
 | `GET /api/data/{shape}` | none (LAN-facing, like the display itself) | Typed rows for a data shape, optionally filtered |
 | `GET /api/display/{slug}` | none (LAN-facing, like the display itself) | A display's own fields, resolved theme tokens, and every screen with its cards, in one call -- see [Display Hierarchy](#display-hierarchy-built-end-to-end) |
 | `POST /api/clients/register` | none (clients are admin-approved, not authenticated) | Register a client-generated `client_id` + name; idempotent, always starts/stays `pending` -- see [Client Connection Model](#client-connection-model-built) |
@@ -723,6 +725,34 @@ in-memory `tokens` state (and, through that, the live preview) -- it
 never touches the server on its own; the admin still reviews and clicks
 "Save theme" for anything to persist, same as typing values in by hand.
 
+**Background image uploads** (#58): setting Background to "Image URL"
+in `ThemeTokenFields.tsx` reveals an "Upload image" button next to the
+URL field (only when the caller passes an `onUploadImage` callback --
+the Designer's narrow card-override editor never shows the background
+field at all, so it never passes one). Picking a file
+`POST`s it as `multipart/form-data` to `POST /api/admin/uploads`
+(`handleUploadImage`, `internal/api/upload_handlers.go`), which --
+regardless of what the file's extension or `Content-Type` header
+claims -- only trusts what it actually decodes as (`image.Decode`,
+stdlib `image/png`+`image/jpeg`+`image/gif` plus
+`golang.org/x/image/webp` for the one format the standard library
+doesn't cover), capped at 8 MiB. An accepted file is saved under a
+random 16-byte hex filename (never the client-supplied name) in
+`UPLOADS_DIR` (`internal/config`, defaulting to `./data/uploads` --
+alongside `DB_PATH` under the same volume on purpose, so an uploaded
+image survives a container restart/update without a second Docker
+volume; see `docker-compose.yml`/`Dockerfile`), and the response's
+`url` (`/uploads/{filename}`) is written straight into the `background`
+field -- the admin still has to hit "Save theme" for it to persist,
+same as any other field. `GET /uploads/{name}` (`handleServeUpload`)
+serves it back unauthenticated, same reasoning as `/api/data` and
+`/display/{slug}`: a display rendering the image as its background has
+no way to attach a Bearer token. `name` is rejected outright if it
+contains a path separator or is `.`/`..`, since every real filename
+this endpoint ever serves is one this same handler generated -- there's
+never a legitimate reason for a request to need one that doesn't look
+like that.
+
 The display side reads and applies a theme too (#23): `DisplayApp.tsx`
 gets it pre-resolved as part of `GET /api/display/{slug}`'s response
 (`useDisplayLayout.ts`, falling back to `defaultTheme` for any token
@@ -902,7 +932,11 @@ of this doc claimed.
   cross-compiles for ARM (Raspberry Pi) without a C toolchain.
   `golang-jwt/v5`, `golang.org/x/crypto/bcrypt` for auth.
   `arran4/golang-ical` + `teambition/rrule-go` for the ICS feed plugin's
-  calendar parsing and RRULE recurrence expansion.
+  calendar parsing and RRULE recurrence expansion. `golang.org/x/image`
+  (just its `webp` decoder) so an uploaded background image (#58) can be
+  verified as a real image in every format the feature claims to
+  support -- the standard library covers png/jpeg/gif decoding on its
+  own, but not webp.
 - **Frontend**: React 19, TypeScript, Vite, `react-router-dom` v7. No
   general UI component library — hand-rolled CSS. The one exception is
   `react-grid-layout`, used specifically for the Designer's drag/resize/

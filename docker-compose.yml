@@ -9,6 +9,13 @@ services:
     environment:
       - PORT=8080
       - DB_PATH=/data/mullet.db
+      # Admin-uploaded files (e.g. a theme's background image, issue
+      # #58) -- deliberately under the same ./data volume as the
+      # database above rather than a second volume, so an uploaded
+      # image survives `docker-compose pull && up -d` the same way the
+      # database does. No need to change this unless you're relocating
+      # ./data itself.
+      - UPLOADS_DIR=/data/uploads
       # Secrets for plugins that reference ${VAR} in their setup fields
       - OWM_API_KEY=${OWM_API_KEY:-}
       - HA_TOKEN=${HA_TOKEN:-}

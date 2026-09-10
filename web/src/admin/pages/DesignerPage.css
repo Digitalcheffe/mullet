@@ -103,6 +103,37 @@
   color: var(--error);
 }
 
+.designer-grid-editor {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+.designer-grid-editor label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.designer-grid-editor .kicker {
+  font: 700 10px var(--font-body);
+  color: var(--ink-soft);
+}
+.designer-grid-editor input {
+  width: 46px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: 600 12px var(--font-body);
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.designer-mode-toggle {
+  flex: none;
+  font-size: 12px;
+  padding: 7px 12px;
+}
+
 .designer-layout {
   display: flex;
   align-items: flex-start;
@@ -219,6 +250,38 @@
 .card-settings-btn:hover,
 .card-delete-btn:hover {
   background: var(--surface-alt);
+}
+
+.card-size-picker {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  /* No resize handles exist in simple mode (see resizeConfig above), so
+     unlike card-settings-btn/card-delete-btn there's nothing here to
+     lose a click-through fight with -- no z-index needed. */
+}
+.card-size-btn {
+  width: 22px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font: 700 10px var(--font-body);
+  cursor: pointer;
+}
+.card-size-btn:hover {
+  background: var(--surface-alt);
+  color: var(--ink);
+}
+.card-size-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
 }
 
 .field textarea {

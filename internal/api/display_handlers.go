@@ -364,48 +364,122 @@ func writeDisplay(w http.ResponseWriter, sqldb *sql.DB, id int, status int) {
 
 // ---- Screens ----
 
+// Layout modes (issue #73): "simple" is a small fixed grid with S/M/L
+// size presets and no resize handles, aimed at someone who just wants a
+// working dashboard fast; "freeform" is the original full-control grid
+// (arbitrary columns/row_height/gap, 8-handle resize). Both store cards
+// in the exact same x/y/w/h shape -- layout_mode only changes what the
+// Designer's UI offers, never the display renderer or the data model.
+const (
+	layoutModeSimple   = "simple"
+	layoutModeFreeform = "freeform"
+)
+
+// Simple mode's grid is fixed and never surfaced as a form field --
+// picked once here rather than left to whatever an admin might type.
+// Columns stays narrow (4) to keep the "just add widgets" experience
+// uncluttered; row_height/gap are only ever used by the Designer's own
+// pixel-based grid math (the live renderer uses CSS Grid fractions, not
+// row_height at all -- see web/src/display/ScreenGrid.tsx), so these
+// only affect how editing looks, not the final display.
+const (
+	simpleColumns   = 4
+	simpleRowHeight = 90
+	simpleGap       = 12
+)
+
+// Freeform's own defaults, used when a freeform screen's columns/
+// row_height/gap are omitted -- including "Switch to advanced layout"
+// itself (web/src/admin/pages/DesignerPage.tsx's SIMPLE_GRID/
+// handleToggleLayoutMode has the matching freeform seed values). Started
+// at 16/40/8; brought down to 8 columns after live testing, since the
+// original density was exactly the kind of "overwhelming" issue #73 set
+// out to avoid in the first place -- freeform is still real full control
+// (arbitrary sizing, resize handles, columns/row_height/gap all
+// editable), just not defaulting to the finest-grained version of it.
+const (
+	freeformColumns   = 8
+	freeformRowHeight = 60
+	freeformGap       = 10
+)
+
 type screenRequest struct {
-	Name      string `json:"name"`
-	Position  int    `json:"position"`
-	Columns   int    `json:"columns"`
-	RowHeight int    `json:"row_height"`
-	Gap       int    `json:"gap"`
+	Name       string `json:"name"`
+	Position   int    `json:"position"`
+	Columns    int    `json:"columns"`
+	RowHeight  int    `json:"row_height"`
+	Gap        int    `json:"gap"`
+	LayoutMode string `json:"layout_mode"`
 }
 
 type screenResponse struct {
-	ID        int    `json:"id"`
-	DisplayID int    `json:"display_id"`
-	Name      string `json:"name"`
-	Position  int    `json:"position"`
-	Columns   int    `json:"columns"`
-	RowHeight int    `json:"row_height"`
-	Gap       int    `json:"gap"`
+	ID         int    `json:"id"`
+	DisplayID  int    `json:"display_id"`
+	Name       string `json:"name"`
+	Position   int    `json:"position"`
+	Columns    int    `json:"columns"`
+	RowHeight  int    `json:"row_height"`
+	Gap        int    `json:"gap"`
+	LayoutMode string `json:"layout_mode"`
 }
 
 func toScreenResponse(s db.Screen) screenResponse {
 	return screenResponse{
 		ID: s.ID, DisplayID: s.DisplayID, Name: s.Name,
 		Position: s.Position, Columns: s.Columns, RowHeight: s.RowHeight, Gap: s.Gap,
+		LayoutMode: s.LayoutMode,
 	}
 }
 
-// screenDefaults fills in a new screen's grid dimensions when the
-// request left them unset, rather than creating an unusable 0-column
-// screen. Unlike columns/rowHeight, 0 is a meaningful, valid value for
-// gap (a dense grid with no space between cards), so it's only defaulted
-// when negative -- there's no way to distinguish "omitted" from
-// "explicitly 0" once JSON has decoded into a plain int, so this treats
-// an omitted gap as "no gap" rather than guessing the caller wanted 8.
-func screenDefaults(req screenRequest) (columns, rowHeight, gap int) {
+// normalizeLayoutMode validates a request's layout_mode, defaulting an
+// omitted one to "simple" -- the same default the DB column itself
+// carries, kept in sync deliberately so a request that doesn't mention
+// layout_mode at all (an old client, or a partial update) still lands on
+// the same value the schema would pick on its own.
+func normalizeLayoutMode(raw string) (string, error) {
+	switch raw {
+	case "":
+		return layoutModeSimple, nil
+	case layoutModeSimple, layoutModeFreeform:
+		return raw, nil
+	default:
+		return "", fmt.Errorf("layout_mode must be %q or %q", layoutModeSimple, layoutModeFreeform)
+	}
+}
+
+// screenDefaults fills in a screen's grid dimensions when the request
+// left them unset, rather than creating (or leaving, on update) an
+// unusable 0-column screen. Simple mode's defaults are its own fixed
+// grid (see simpleColumns et al.); freeform's are the original 16/40/8
+// -- either can still be overridden explicitly (a freeform screen isn't
+// locked to 16 columns, and neither is simple locked to 4 if a caller
+// has a reason not to).
+//
+// gap is treated differently depending on isCreate. There's no way to
+// distinguish "omitted" from "explicitly 0" once JSON has decoded into a
+// plain int, so on update (isCreate false) a 0 is trusted at face value
+// -- the admin is editing a real numeric field (see the Designer's
+// freeform grid editor) that already shows the current value, so a 0
+// they typed there means it. On create there's no prior value for 0 to
+// plausibly mean "keep it as it was" -- issue #73's own admin UI never
+// asks for gap at all when creating a screen, so an omitted-and-thus-0
+// gap on create almost always means "I have no opinion," and defaulting
+// it the same as columns/row_height is what actually delivers a
+// picked-once-internally, never-surfaced gap for a new simple screen.
+func screenDefaults(req screenRequest, layoutMode string, isCreate bool) (columns, rowHeight, gap int) {
 	columns, rowHeight, gap = req.Columns, req.RowHeight, req.Gap
+	defaultColumns, defaultRowHeight, defaultGap := freeformColumns, freeformRowHeight, freeformGap
+	if layoutMode == layoutModeSimple {
+		defaultColumns, defaultRowHeight, defaultGap = simpleColumns, simpleRowHeight, simpleGap
+	}
 	if columns <= 0 {
-		columns = 16
+		columns = defaultColumns
 	}
 	if rowHeight <= 0 {
-		rowHeight = 40
+		rowHeight = defaultRowHeight
 	}
-	if gap < 0 {
-		gap = 8
+	if gap < 0 || (isCreate && gap == 0) {
+		gap = defaultGap
 	}
 	return columns, rowHeight, gap
 }
@@ -469,9 +543,14 @@ func handleCreateScreen(sqldb *sql.DB) http.HandlerFunc {
 			http.Error(w, "name is required", http.StatusBadRequest)
 			return
 		}
-		columns, rowHeight, gap := screenDefaults(req)
+		layoutMode, err := normalizeLayoutMode(req.LayoutMode)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		columns, rowHeight, gap := screenDefaults(req, layoutMode, true)
 
-		id, err := db.CreateScreen(sqldb, displayID, req.Name, req.Position, columns, rowHeight, gap)
+		id, err := db.CreateScreen(sqldb, displayID, req.Name, req.Position, columns, rowHeight, gap, layoutMode)
 		switch {
 		case errors.Is(err, db.ErrInUse):
 			http.Error(w, "display not found", http.StatusBadRequest)
@@ -501,9 +580,14 @@ func handleUpdateScreen(sqldb *sql.DB) http.HandlerFunc {
 			http.Error(w, "name is required", http.StatusBadRequest)
 			return
 		}
-		columns, rowHeight, gap := screenDefaults(req)
+		layoutMode, err := normalizeLayoutMode(req.LayoutMode)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		columns, rowHeight, gap := screenDefaults(req, layoutMode, false)
 
-		if err := db.UpdateScreen(sqldb, id, req.Name, req.Position, columns, rowHeight, gap); errors.Is(err, db.ErrNotFound) {
+		if err := db.UpdateScreen(sqldb, id, req.Name, req.Position, columns, rowHeight, gap, layoutMode); errors.Is(err, db.ErrNotFound) {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		} else if err != nil {

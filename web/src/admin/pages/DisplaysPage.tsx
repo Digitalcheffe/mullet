@@ -27,6 +27,7 @@ interface Screen {
   columns: number;
   row_height: number;
   gap: number;
+  layout_mode: 'simple' | 'freeform';
 }
 
 interface DisplayFormValues {
@@ -38,11 +39,13 @@ interface DisplayFormValues {
   show_bottom_bar: boolean;
 }
 
+// Grid density (columns/row_height/gap) and layout_mode itself aren't
+// collected here -- a new screen is always created in simple mode with
+// the backend's own fixed grid (issue #73); "Switch to advanced layout"
+// and its real grid controls live in the Designer instead, once a
+// screen actually exists to switch.
 interface ScreenFormValues {
   name: string;
-  columns: number;
-  row_height: number;
-  gap: number;
 }
 
 type DisplayPanel = { mode: 'add' } | { mode: 'edit'; display: Display } | null;
@@ -135,17 +138,25 @@ export default function DisplaysPage() {
     loadDisplays();
   }
 
-  async function submitScreen(values: ScreenFormValues, url: string, method: 'POST' | 'PUT', position?: number) {
+  // existing is only passed for an edit -- its grid fields are echoed
+  // straight back so a rename doesn't reset a screen's layout_mode or
+  // grid density to simple mode's defaults (handleUpdateScreen has no
+  // partial-update path, so anything omitted here reverts to the
+  // server's own default instead of staying as it was). A new screen
+  // sends none of that at all, letting the backend pick simple mode's
+  // fixed grid on its own.
+  async function submitScreen(name: string, url: string, method: 'POST' | 'PUT', position: number, existing?: Screen) {
+    const body: Record<string, unknown> = { name, position };
+    if (existing) {
+      body.columns = existing.columns;
+      body.row_height = existing.row_height;
+      body.gap = existing.gap;
+      body.layout_mode = existing.layout_mode;
+    }
     const res = await apiFetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: values.name,
-        position: position ?? 0,
-        columns: values.columns,
-        row_height: values.row_height,
-        gap: values.gap,
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       throw new Error(await readErrorMessage(res, 'Save failed'));
@@ -165,18 +176,26 @@ export default function DisplaysPage() {
     if (target < 0 || target >= screens.length) return;
     const a = screens[index];
     const b = screens[target];
-    // Swap positions. Screens keep their own columns/row_height/gap --
-    // only rotation order changes.
+    // Swap positions. Screens keep their own columns/row_height/gap/
+    // layout_mode -- only rotation order changes. Every field has to be
+    // re-sent (handleUpdateScreen has no partial-update path), including
+    // layout_mode -- an omitted one would silently revert to simple mode.
     await Promise.all([
       apiFetch(`/api/admin/screens/${a.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: a.name, position: b.position, columns: a.columns, row_height: a.row_height, gap: a.gap }),
+        body: JSON.stringify({
+          name: a.name, position: b.position,
+          columns: a.columns, row_height: a.row_height, gap: a.gap, layout_mode: a.layout_mode,
+        }),
       }),
       apiFetch(`/api/admin/screens/${b.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: b.name, position: a.position, columns: b.columns, row_height: b.row_height, gap: b.gap }),
+        body: JSON.stringify({
+          name: b.name, position: a.position,
+          columns: b.columns, row_height: b.row_height, gap: b.gap, layout_mode: b.layout_mode,
+        }),
       }),
     ]);
     if (selectedDisplayId != null) await loadScreens(selectedDisplayId);
@@ -266,7 +285,9 @@ export default function DisplaysPage() {
                   <div className="screen-info">
                     <div className="screen-name">{s.name}</div>
                     <div className="screen-detail">
-                      {s.columns} columns &middot; {s.row_height}px rows &middot; {s.gap}px gap
+                      {s.layout_mode === 'freeform'
+                        ? <>Advanced layout &middot; {s.columns} columns &middot; {s.row_height}px rows &middot; {s.gap}px gap</>
+                        : 'Simple layout'}
                     </div>
                   </div>
                   <Link className="btn-primary" to={`/admin/displays/${s.display_id}/screens/${s.id}/design`}>
@@ -286,8 +307,8 @@ export default function DisplaysPage() {
       )}
 
       {displayPanel && (
-        <div className="modal-scrim" onClick={() => setDisplayPanel(null)}>
-          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-scrim">
+          <div className="modal-panel">
             <h2>{displayPanel.mode === 'add' ? 'Add Display' : `Edit ${displayPanel.display.name}`}</h2>
             <DisplayForm
               themes={themes}
@@ -323,25 +344,22 @@ export default function DisplaysPage() {
       )}
 
       {screenPanel && selectedDisplayId != null && (
-        <div className="modal-scrim" onClick={() => setScreenPanel(null)}>
-          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-scrim">
+          <div className="modal-panel">
             <h2>{screenPanel.mode === 'add' ? 'Add Screen' : `Edit ${screenPanel.screen.name}`}</h2>
             <ScreenForm
-              initialValues={
-                screenPanel.mode === 'add'
-                  ? { name: '', columns: 16, row_height: 40, gap: 8 }
-                  : {
-                      name: screenPanel.screen.name,
-                      columns: screenPanel.screen.columns,
-                      row_height: screenPanel.screen.row_height,
-                      gap: screenPanel.screen.gap,
-                    }
-              }
+              initialValues={{ name: screenPanel.mode === 'add' ? '' : screenPanel.screen.name }}
               submitLabel={screenPanel.mode === 'add' ? 'Add screen' : 'Save changes'}
               onSubmit={(values) =>
                 screenPanel.mode === 'add'
-                  ? submitScreen(values, `/api/admin/displays/${selectedDisplayId}/screens`, 'POST', screens.length)
-                  : submitScreen(values, `/api/admin/screens/${screenPanel.screen.id}`, 'PUT', screenPanel.screen.position)
+                  ? submitScreen(values.name, `/api/admin/displays/${selectedDisplayId}/screens`, 'POST', screens.length)
+                  : submitScreen(
+                      values.name,
+                      `/api/admin/screens/${screenPanel.screen.id}`,
+                      'PUT',
+                      screenPanel.screen.position,
+                      screenPanel.screen,
+                    )
               }
               onCancel={() => setScreenPanel(null)}
             />
@@ -495,36 +513,10 @@ function ScreenForm({ initialValues, submitLabel, onSubmit, onCancel }: ScreenFo
         <span className="kicker">Name</span>
         <input value={values.name} onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))} required autoFocus />
       </label>
-
-      <label className="field">
-        <span className="kicker">Columns</span>
-        <input
-          type="number"
-          min={1}
-          value={values.columns}
-          onChange={(e) => setValues((v) => ({ ...v, columns: Number(e.target.value) }))}
-        />
-      </label>
-
-      <label className="field">
-        <span className="kicker">Row height (pixels)</span>
-        <input
-          type="number"
-          min={1}
-          value={values.row_height}
-          onChange={(e) => setValues((v) => ({ ...v, row_height: Number(e.target.value) }))}
-        />
-      </label>
-
-      <label className="field">
-        <span className="kicker">Gap (pixels)</span>
-        <input
-          type="number"
-          min={0}
-          value={values.gap}
-          onChange={(e) => setValues((v) => ({ ...v, gap: Number(e.target.value) }))}
-        />
-      </label>
+      <p className="field-help">
+        Starts in simple layout -- drag widgets onto a small preset grid, no setup needed. "Switch to advanced
+        layout" inside the Designer unlocks the full column/row/gap grid and freeform resizing.
+      </p>
 
       <div className="manifest-form-actions">
         <button type="button" className="btn-secondary" onClick={onCancel}>

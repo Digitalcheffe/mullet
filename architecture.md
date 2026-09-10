@@ -328,7 +328,7 @@ one.
 | `shape_events`, `shape_tasks`, `shape_weather_current`, `shape_weather_forecast`, `shape_home_devices`, `shape_packages`, `shape_infrastructure`, `shape_media_status` | One table per data shape, typed columns matching its Go struct — no JSON blobs. See `internal/db/migrations/002_shapes.sql`. |
 | `themes` | Named JSON token sets (`internal/db/migrations/004_displays.sql`). A display references one as its base theme; a card can override it via `cards.theme_override`. Seeded with the Dark Glass default (`006_seed_default_theme.sql`) plus three more bundled presets, none of them `is_default` (`013_bundled_themes.sql`, #31) -- see [Theme Cascade](#theme-cascade-built) |
 | `displays` | A physical output routed at `/display/{slug}` (unique). `theme_id` nullable FK to `themes`; `rotation_seconds` how often it rotates through its screens; `show_top_bar`/`show_bottom_bar` toggle the fixed clock/weather and now-playing/alerts bars |
-| `screens` | A page within a display (`ON DELETE CASCADE` from `displays`). Owns its own grid (`columns`, `row_height`, `gap`, all in pixels except `columns`) rather than inheriting one from its display; `position` orders rotation |
+| `screens` | A page within a display (`ON DELETE CASCADE` from `displays`). Owns its own grid (`columns`, `row_height`, `gap`, all in pixels except `columns`) rather than inheriting one from its display; `position` orders rotation. `layout_mode` (`'simple'` \| `'freeform'`, default `'simple'`, `014_screen_layout_mode.sql`, #73) only changes what the Designer's own UI offers for that screen (a small fixed grid with S/M/L size presets and no resize handles, vs. the original full-control grid) -- it doesn't change the stored grid columns/row_height/gap semantics themselves, the live renderer, or how cards are stored |
 | `cards` | A positioned UI plugin on a screen's grid (`ON DELETE CASCADE` from `screens`). `x`/`y`/`w`/`h` are grid units. `data_plugin_instance_id` (nullable, `ON DELETE SET NULL`) is which configured plugin instance it reads from — nullable because a card's UI plugin might need no data (clock) or the admin hasn't wired one up yet; `SET NULL` rather than cascade so deleting an unrelated data plugin instance doesn't silently delete a card |
 | `oauth_tokens` | One row per OAuth2 plugin instance's access/refresh token (`internal/db/migrations/008_oauth_tokens.sql`, `ON DELETE CASCADE` from `data_plugin_instances`, `UNIQUE` on `plugin_instance_id`) — see [OAuth2](#oauth2-built) below |
 | `clients` | Registered client devices, dedicated app or browser alike (`internal/db/migrations/010_clients.sql` + `011_client_ip.sql`, #29/#30). `client_id` is generated *by the client itself* (a pairing code) and sent at registration, `UNIQUE` -- registering the same `client_id` twice is idempotent, not an error, since a client can't tell whether its first registration actually landed. `display_id` nullable FK to `displays` (no `ON DELETE CASCADE`: deleting a display a client is assigned to is blocked, same as `theme_id`, until the client is reassigned or removed). `status` is only ever the admin's own lifecycle call (`pending`/`approved`/`rejected`) -- see [Client Connection Model](#client-connection-model-built) for why "offline" isn't a stored status. `ip_address` is a display-only hint for telling pending clients apart, refreshed on every registration/poll, not an identity mechanism |
@@ -438,7 +438,9 @@ Display   "Kitchen"  --  /display/kitchen
   Owns its *own* grid — `columns`, `row_height`, and `gap` (pixels) —
   rather than inheriting fixed dimensions from its display, so one
   screen can be a dense multi-card layout and another a single
-  full-bleed card. `position` orders the rotation.
+  full-bleed card. `position` orders the rotation. `layout_mode`
+  (`'simple'`/`'freeform'`, #73) is a Designer-only UX switch, not a
+  second grid system -- see [The Designer](#the-designer) below.
 - **Card** (`cards`): a positioned rectangle on its screen's grid
   (`x`/`y`/`w`/`h`, grid units, `ON DELETE CASCADE` from the screen),
   referencing a UI plugin (`ui_plugin_id`, a free-form string — there's
@@ -484,6 +486,33 @@ narrow `ThemeTokenFields` set described in
 [Theme Cascade](#theme-cascade-built) (#21). Nothing here is raw JSON
 editing anymore; every value saved is guaranteed to be exactly what the
 widget's own component reads out of `config`.
+
+**Simple vs. freeform layout (#73).** A screen's `layout_mode` picks
+which of two Designer UX layers sits on top of the exact same x/y/w/h
+card model -- there's no separate schema, no display-side branching,
+and freeform is the *original* Designer behavior above, entirely
+unchanged when `layout_mode` is `'freeform'`. `'simple'` (the default
+for new screens) instead fixes the grid to a narrow, never-configured
+4-column/90px-row/12px-gap layout (`internal/api/display_handlers.go`'s
+`simpleColumns`/`simpleRowHeight`/`simpleGap`) and replaces two
+interactions: a palette drag or double-click places a card at its own
+UI plugin's `defaultSize` (Medium) rather than a fixed placeholder size,
+and a placed card shows a Small/Medium/Large picker (mapping onto the
+widget's own `minSize`/`defaultSize`/`maxSize`, width clamped to the
+screen's column count since those were authored against freeform's
+wider grid) instead of resize handles -- dragging still repositions.
+"Switch to advanced layout" flips `layout_mode` to `'freeform'`, seeding
+a wider starting grid (`freeformColumns`/`freeformRowHeight`/
+`freeformGap`, 8/60/10 -- brought down from the original 16/40/8 after
+live testing found that density was exactly the kind of overwhelming
+issue #73 set out to fix) and exposing `columns`/`row_height`/`gap` as
+editable toolbar fields; the reverse toggle resets to simple's own fixed
+grid. Neither direction touches any card's stored position or size. A
+faint background grid (`gridlineBackground` in `DesignerPage.tsx`, CSS
+`repeating-linear-gradient`) makes the column/row structure visible in
+both modes, exact for rows (`row_height + gap` is react-grid-layout's
+own row pitch) and an approximation for columns (percentage-based,
+doesn't account for RGL's per-column margin subtraction).
 
 A placed card still renders as a generic labeled box on the Designer's
 own canvas (widget name + data source), not real widget content --

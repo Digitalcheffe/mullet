@@ -294,8 +294,8 @@ export default function ClientsPage() {
       </section>
 
       {approvePanel && (
-        <div className="modal-scrim" onClick={() => setApprovePanel(null)}>
-          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-scrim">
+          <div className="modal-panel">
             <h2>Approve &ldquo;{approvePanel.client.name}&rdquo;</h2>
             <ApproveForm displays={displays} onSubmit={(id) => handleApprove(approvePanel.client, id)} onCancel={() => setApprovePanel(null)} />
           </div>
@@ -303,8 +303,8 @@ export default function ClientsPage() {
       )}
 
       {editPanel && (
-        <div className="modal-scrim" onClick={() => setEditPanel(null)}>
-          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-scrim">
+          <div className="modal-panel">
             <h2>Edit &ldquo;{editPanel.client.name}&rdquo;</h2>
             <EditClientForm
               client={editPanel.client}
@@ -317,8 +317,8 @@ export default function ClientsPage() {
       )}
 
       {offlinePanel && (
-        <div className="modal-scrim" onClick={() => setOfflinePanel(null)}>
-          <div className="modal-panel modal-panel-wide" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-scrim">
+          <div className="modal-panel modal-panel-wide">
             <h2>Offline Screen for &ldquo;{offlinePanel.display.name}&rdquo;</h2>
             <OfflineScreenForm apiFetch={apiFetch} display={offlinePanel.display} onDone={() => setOfflinePanel(null)} />
           </div>

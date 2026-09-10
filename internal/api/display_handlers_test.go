@@ -258,10 +258,14 @@ func TestScreenCRUDEndpoints(t *testing.T) {
 	}
 	var created screenResponse
 	json.Unmarshal(rec.Body.Bytes(), &created)
-	// Columns/RowHeight default when omitted (0 isn't a usable grid size);
-	// Gap does not, since 0 is a legitimate "no gap" value in its own right.
-	if created.DisplayID != displayID || created.Name != "Main" || created.Columns != 16 || created.RowHeight != 40 || created.Gap != 0 {
-		t.Errorf("created = %+v, unexpected values (want columns=16, row_height=40 defaults, gap=0 as given)", created)
+	// Columns/RowHeight/Gap all default when omitted on create (0 isn't a
+	// usable grid size, and there's no prior value for an omitted gap to
+	// plausibly mean "leave it" the way it can on update -- see
+	// screenDefaults' doc comment). layout_mode was omitted too, so this
+	// exercises simple mode's own defaults (issue #73) -- see
+	// TestCreateFreeformScreenDefaults for the freeform equivalent.
+	if created.DisplayID != displayID || created.Name != "Main" || created.LayoutMode != "simple" || created.Columns != simpleColumns || created.RowHeight != simpleRowHeight || created.Gap != simpleGap {
+		t.Errorf("created = %+v, unexpected values (want layout_mode=simple, columns=%d, row_height=%d, gap=%d defaults)", created, simpleColumns, simpleRowHeight, simpleGap)
 	}
 
 	rec = httptest.NewRecorder()
@@ -314,8 +318,107 @@ func TestCreateScreenNegativeGapDefaults(t *testing.T) {
 	}
 	var created screenResponse
 	json.Unmarshal(rec.Body.Bytes(), &created)
-	if created.Gap != 8 {
-		t.Errorf("Gap = %d, want 8 (negative gap should default)", created.Gap)
+	if created.Gap != simpleGap {
+		t.Errorf("Gap = %d, want %d (negative gap should default to simple mode's own gap, since layout_mode was omitted)", created.Gap, simpleGap)
+	}
+}
+
+// TestCreateFreeformScreenDefaults guards the other half of issue #73's
+// default-picking logic: a screen explicitly created as "freeform" still
+// gets the original 16/40/8 grid when its own columns/row_height/gap are
+// omitted, unaffected by simple mode becoming the overall default.
+func TestCreateFreeformScreenDefaults(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	displayID := createTestDisplay(t, router)
+
+	body, _ := json.Marshal(screenRequest{Name: "Main", LayoutMode: "freeform"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays/"+strconv.Itoa(displayID)+"/screens", body))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var created screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &created)
+	// Gap defaults too, same as columns/row_height -- omitted fields on
+	// create all get a sensible starting value, freeform included (see
+	// screenDefaults' doc comment for why create and update treat an
+	// omitted/zero gap differently).
+	if created.LayoutMode != "freeform" || created.Columns != freeformColumns || created.RowHeight != freeformRowHeight || created.Gap != freeformGap {
+		t.Errorf("created = %+v, want layout_mode=freeform, columns=%d, row_height=%d, gap=%d", created, freeformColumns, freeformRowHeight, freeformGap)
+	}
+}
+
+// TestCreateScreenInvalidLayoutModeReturns400 guards normalizeLayoutMode
+// actually rejecting garbage rather than silently coercing it.
+func TestCreateScreenInvalidLayoutModeReturns400(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	displayID := createTestDisplay(t, router)
+
+	body, _ := json.Marshal(screenRequest{Name: "Main", LayoutMode: "bogus"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays/"+strconv.Itoa(displayID)+"/screens", body))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+// TestUpdateScreenChangesLayoutMode guards the "Switch to advanced
+// layout" toggle's actual mechanism: a PUT that only changes
+// layout_mode (columns/row_height/gap omitted, same as a real toggle
+// click would send) should still update the stored mode, not silently
+// reset it back to simple on every unrelated edit.
+func TestUpdateScreenChangesLayoutMode(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	displayID := createTestDisplay(t, router)
+
+	body, _ := json.Marshal(screenRequest{Name: "Main"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays/"+strconv.Itoa(displayID)+"/screens", body))
+	var created screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &created)
+	if created.LayoutMode != "simple" {
+		t.Fatalf("created.LayoutMode = %q, want simple", created.LayoutMode)
+	}
+
+	updateBody, _ := json.Marshal(screenRequest{Name: "Main", LayoutMode: "freeform", Columns: created.Columns, RowHeight: created.RowHeight, Gap: created.Gap})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/screens/"+strconv.Itoa(created.ID), updateBody))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var updated screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &updated)
+	if updated.LayoutMode != "freeform" {
+		t.Errorf("updated.LayoutMode = %q, want freeform", updated.LayoutMode)
+	}
+}
+
+// TestUpdateScreenRespectsExplicitZeroGap guards the other half of
+// screenDefaults' create-vs-update distinction: once a screen exists,
+// an admin explicitly setting gap to 0 (e.g. via the Designer's
+// freeform grid editor, which shows the real current value rather than
+// a blank field) must stick, not get silently defaulted the way an
+// omitted gap on create does.
+func TestUpdateScreenRespectsExplicitZeroGap(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	displayID := createTestDisplay(t, router)
+
+	body, _ := json.Marshal(screenRequest{Name: "Main", LayoutMode: "freeform"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays/"+strconv.Itoa(displayID)+"/screens", body))
+	var created screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &created)
+
+	updateBody, _ := json.Marshal(screenRequest{Name: "Main", LayoutMode: "freeform", Columns: created.Columns, RowHeight: created.RowHeight, Gap: 0})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/screens/"+strconv.Itoa(created.ID), updateBody))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var updated screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &updated)
+	if updated.Gap != 0 {
+		t.Errorf("updated.Gap = %d, want 0 (explicit gap=0 on update should stick, not default)", updated.Gap)
 	}
 }
 

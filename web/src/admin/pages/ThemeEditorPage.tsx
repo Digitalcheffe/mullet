@@ -216,8 +216,8 @@ export default function ThemeEditorPage() {
       </form>
 
       {importOpen && (
-        <div className="modal-scrim" onClick={() => setImportOpen(false)}>
-          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-scrim">
+          <div className="modal-panel">
             <ImportTokensModal
               onApply={(imported) => {
                 setTokens(imported);

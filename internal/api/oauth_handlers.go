@@ -91,14 +91,14 @@ func handleOAuthAuthorize(sqldb *sql.DB, registry *plugindata.Registry, pending 
 			return
 		}
 
-		state, err := pending.Begin(instanceID)
+		state, codeVerifier, err := pending.Begin(instanceID)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(authorizeURLResponse{AuthorizeURL: oauth.BuildAuthURL(cfg, state)})
+		json.NewEncoder(w).Encode(authorizeURLResponse{AuthorizeURL: oauth.BuildAuthURL(cfg, state, codeVerifier)})
 	}
 }
 
@@ -119,7 +119,7 @@ func handleOAuthCallback(sqldb *sql.DB, registry *plugindata.Registry, pending *
 
 		state := r.URL.Query().Get("state")
 		code := r.URL.Query().Get("code")
-		instanceID, ok := pending.Consume(state)
+		instanceID, codeVerifier, ok := pending.Consume(state)
 		if !ok || code == "" {
 			redirectResult(w, r, false, "invalid or expired authorization request")
 			return
@@ -136,7 +136,7 @@ func handleOAuthCallback(sqldb *sql.DB, registry *plugindata.Registry, pending *
 			return
 		}
 
-		tok, err := oauth.Exchange(r.Context(), cfg, code)
+		tok, err := oauth.Exchange(r.Context(), cfg, code, codeVerifier)
 		if err != nil {
 			redirectResult(w, r, false, "token exchange failed")
 			return

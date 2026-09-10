@@ -23,10 +23,17 @@ import (
 // Scopes, and which SetupField holds the tenant) and the instance's own
 // config (client_id, client_secret, and the tenant value itself).
 type Config struct {
-	AuthURL      string
-	TokenURL     string
-	Scopes       []string
-	ClientID     string
+	AuthURL  string
+	TokenURL string
+	Scopes   []string
+	ClientID string
+	// ClientSecret is only sent to the token endpoint if non-empty (the
+	// underlying golang.org/x/oauth2 package omits the param entirely
+	// otherwise) -- a public client app, which is what Microsoft issues
+	// for personal/consumer accounts (and increasingly recommends for
+	// every app type), has no secret to send at all. PKCE (see
+	// BuildAuthURL/Exchange's codeVerifier) is what proves the request's
+	// legitimacy in its place.
 	ClientSecret string
 	RedirectURL  string
 	// Tenant fills a literal "{tenant}" placeholder in AuthURL/TokenURL,
@@ -68,18 +75,35 @@ func NewState() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// NewCodeVerifier generates a fresh PKCE code verifier (RFC 7636) for one
+// authorization attempt. Delegates to oauth2.GenerateVerifier, which
+// already implements the RFC's randomness and encoding requirements --
+// the caller (PendingStore) is responsible for remembering it alongside
+// the state token and handing it back to Exchange on the callback.
+func NewCodeVerifier() string {
+	return oauth2.GenerateVerifier()
+}
+
 // BuildAuthURL returns the URL to send the admin's browser to, offline
 // access requested (so the response includes a refresh token) via
 // AccessTypeOffline -- harmless for providers that ignore the param,
-// required by Google-style providers that would otherwise omit it.
-func BuildAuthURL(cfg Config, state string) string {
-	return cfg.toOAuth2Config().AuthCodeURL(state, oauth2.AccessTypeOffline)
+// required by Google-style providers that would otherwise omit it. Always
+// includes a PKCE challenge (code_challenge + code_challenge_method=S256)
+// derived from codeVerifier -- Microsoft's identity platform recommends
+// this for every application type, public or confidential, and requires
+// it for single-page apps; a provider that doesn't ask for it just
+// ignores the extra params.
+func BuildAuthURL(cfg Config, state, codeVerifier string) string {
+	return cfg.toOAuth2Config().AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.S256ChallengeOption(codeVerifier))
 }
 
-// Exchange trades an authorization code (from the callback's ?code=)
-// for an access/refresh token pair.
-func Exchange(ctx context.Context, cfg Config, code string) (*oauth2.Token, error) {
-	tok, err := cfg.toOAuth2Config().Exchange(ctx, code)
+// Exchange trades an authorization code (from the callback's ?code=) for
+// an access/refresh token pair. codeVerifier must be the same value
+// BuildAuthURL derived the original request's code_challenge from -- see
+// PendingStore, which carries it alongside the CSRF state token between
+// the two calls.
+func Exchange(ctx context.Context, cfg Config, code, codeVerifier string) (*oauth2.Token, error) {
+	tok, err := cfg.toOAuth2Config().Exchange(ctx, code, oauth2.VerifierOption(codeVerifier))
 	if err != nil {
 		return nil, fmt.Errorf("exchanging authorization code: %w", err)
 	}

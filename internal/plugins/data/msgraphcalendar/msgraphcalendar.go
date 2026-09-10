@@ -72,8 +72,14 @@ func (p *Plugin) Manifest() plugindata.DataPluginManifest {
 			TenantField: "tenant",
 		},
 		SetupFields: []plugindata.SetupField{
-			{Key: "client_id", Label: "Client ID", Type: "text", Required: true, HelpText: "From your Azure App Registration."},
-			{Key: "client_secret", Label: "Client Secret", Type: "password", Required: true},
+			{
+				Key: "client_id", Label: "Client ID", Type: "text", Required: true,
+				HelpText: `From your Azure App Registration. Register it as a public client (no platform, or "Mobile and desktop applications") -- personal Microsoft accounts never get a client secret, and Mullet authorizes with PKCE instead.`,
+			},
+			{
+				Key: "client_secret", Label: "Client Secret", Type: "password", Required: false,
+				HelpText: "Only needed if you registered a confidential/web client instead. Leave blank for a personal Microsoft account.",
+			},
 			{
 				Key: "tenant", Label: "Tenant", Type: "text", Required: true, Default: "consumers",
 				HelpText: `Use "consumers" for a personal Outlook/Hotmail/Live account.`,

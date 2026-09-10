@@ -20,7 +20,7 @@ func TestBuildAuthURLSubstitutesTenantAndCarriesScopes(t *testing.T) {
 		Tenant:       "consumers",
 	}
 
-	authURL := BuildAuthURL(cfg, "state-123")
+	authURL := BuildAuthURL(cfg, "state-123", "verifier-abc")
 	parsed, err := url.Parse(authURL)
 	if err != nil {
 		t.Fatalf("parsing auth URL: %v", err)
@@ -41,6 +41,12 @@ func TestBuildAuthURLSubstitutesTenantAndCarriesScopes(t *testing.T) {
 	if got := q.Get("scope"); !strings.Contains(got, "Calendars.Read") || !strings.Contains(got, "offline_access") {
 		t.Errorf("scope = %q, want both requested scopes", got)
 	}
+	if q.Get("code_challenge_method") != "S256" {
+		t.Errorf("code_challenge_method = %q, want S256", q.Get("code_challenge_method"))
+	}
+	if q.Get("code_challenge") == "" {
+		t.Error("code_challenge is empty, want a PKCE challenge derived from the verifier")
+	}
 }
 
 func TestBuildAuthURLWithoutTenantLeavesURLUnchanged(t *testing.T) {
@@ -49,7 +55,7 @@ func TestBuildAuthURLWithoutTenantLeavesURLUnchanged(t *testing.T) {
 		TokenURL: "https://example.com/oauth/token",
 		ClientID: "client-abc",
 	}
-	authURL := BuildAuthURL(cfg, "s")
+	authURL := BuildAuthURL(cfg, "s", "verifier")
 	if !strings.HasPrefix(authURL, "https://example.com/oauth/authorize") {
 		t.Errorf("authURL = %q, want unchanged host/path for a non-tenant-scoped provider", authURL)
 	}
@@ -96,7 +102,7 @@ func TestExchange(t *testing.T) {
 	defer srv.Close()
 
 	cfg := Config{TokenURL: srv.URL, ClientID: "client-abc", ClientSecret: "secret-xyz"}
-	tok, err := Exchange(t.Context(), cfg, "auth-code-1")
+	tok, err := Exchange(t.Context(), cfg, "auth-code-1", "verifier-xyz")
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
@@ -110,8 +116,39 @@ func TestExchangeWrongCodeFails(t *testing.T) {
 	defer srv.Close()
 
 	cfg := Config{TokenURL: srv.URL, ClientID: "client-abc", ClientSecret: "secret-xyz"}
-	if _, err := Exchange(t.Context(), cfg, "wrong-code"); err == nil {
+	if _, err := Exchange(t.Context(), cfg, "wrong-code", "verifier-xyz"); err == nil {
 		t.Error("Exchange(wrong code) = nil error, want failure")
+	}
+}
+
+// TestExchangeSendsCodeVerifierAndOmitsSecretForPublicClient guards the
+// two changes issue #77 depends on together: PKCE's code_verifier must
+// reach the token request, and a public client (Config.ClientSecret left
+// empty, the only kind Microsoft issues for personal/consumer accounts)
+// must not send an empty client_secret param in its place.
+func TestExchangeSendsCodeVerifierAndOmitsSecretForPublicClient(t *testing.T) {
+	var gotForm url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parsing token request form: %v", err)
+		}
+		gotForm = r.Form
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "access-from-code", "token_type": "Bearer", "expires_in": 3600,
+		})
+	}))
+	defer srv.Close()
+
+	cfg := Config{TokenURL: srv.URL, ClientID: "client-abc"} // no ClientSecret
+	if _, err := Exchange(t.Context(), cfg, "auth-code-1", "verifier-xyz"); err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+	if gotForm.Get("code_verifier") != "verifier-xyz" {
+		t.Errorf("code_verifier = %q, want verifier-xyz", gotForm.Get("code_verifier"))
+	}
+	if _, present := gotForm["client_secret"]; present {
+		t.Errorf("client_secret param present (value %q), want it omitted entirely for a public client", gotForm.Get("client_secret"))
 	}
 }
 

@@ -110,6 +110,15 @@ export default function PluginsPage() {
     }
     setPanel(null);
     await load();
+
+    // A freshly created OAuth2 instance can't fetch anything until it's
+    // authorized -- send the admin straight into the provider's consent
+    // screen instead of leaving them to find a separate "Authorize"
+    // button in the list this just refreshed into.
+    if (method === 'POST' && manifests.find((m) => m.id === pluginID)?.auth_type === 'oauth2') {
+      const created: PluginInstance = await res.json();
+      await handleAuthorize(created);
+    }
   }
 
   async function handleDelete(instance: PluginInstance) {

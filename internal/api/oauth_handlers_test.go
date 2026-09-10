@@ -178,6 +178,31 @@ func fakeProviderServer(t *testing.T) *httptest.Server {
 	}))
 }
 
+// fakeProviderServerCapturingForm is like fakeProviderServer but also
+// records the token request's form values in capturedForm, for tests
+// asserting on specific params -- PKCE's code_verifier, or the absence
+// of client_secret for a public client (issue #77).
+func fakeProviderServerCapturingForm(t *testing.T) (srv *httptest.Server, capturedForm *url.Values) {
+	t.Helper()
+	capturedForm = &url.Values{}
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parsing token request form: %v", err)
+		}
+		*capturedForm = r.Form
+		w.Header().Set("Content-Type", "application/json")
+		if r.Form.Get("code") != "auth-code-1" {
+			http.Error(w, "unexpected code", http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "access-from-code", "refresh_token": "refresh-1",
+			"token_type": "Bearer", "expires_in": 3600,
+		})
+	}))
+	return srv, capturedForm
+}
+
 // newTestRouterWithOAuthPlugin is like newTestRouter but its registry
 // also has fakeOAuthPlugin registered, pointed at a fake provider's
 // tokenURL, for tests that exercise the OAuth2 flow end-to-end.
@@ -279,6 +304,70 @@ func TestOAuthAuthorizeReturnsURLWithState(t *testing.T) {
 
 func containsSuffix(s, suffix string) bool {
 	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
+}
+
+// TestOAuthAuthorizeIncludesPKCEChallenge guards issue #77: the
+// authorize URL must always carry a PKCE challenge, not just for a
+// client that happens to have no secret -- Microsoft recommends it for
+// every application type.
+func TestOAuthAuthorizeIncludesPKCEChallenge(t *testing.T) {
+	srv := fakeProviderServer(t)
+	defer srv.Close()
+	router, _ := newTestRouterWithOAuthPlugin(t, srv.URL)
+
+	instanceID := createTestOAuthInstance(t, router, `{"client_id":"abc","client_secret":"xyz","tenant":"consumers"}`)
+
+	loc, err := url.Parse(authorizeURL(t, router, instanceID))
+	if err != nil {
+		t.Fatalf("parsing authorize_url: %v", err)
+	}
+	q := loc.Query()
+	if q.Get("code_challenge_method") != "S256" {
+		t.Errorf("code_challenge_method = %q, want S256", q.Get("code_challenge_method"))
+	}
+	if q.Get("code_challenge") == "" {
+		t.Error("code_challenge is empty, want a PKCE challenge")
+	}
+}
+
+// TestOAuthCallbackWorksForPublicClientWithoutSecret guards issue #77's
+// actual fix: an instance configured with no client_secret at all (the
+// config a personal/consumer Microsoft account registration produces --
+// Microsoft never issues one to a public client) must still complete the
+// flow, proving legitimacy via PKCE's code_verifier instead.
+func TestOAuthCallbackWorksForPublicClientWithoutSecret(t *testing.T) {
+	srv, capturedForm := fakeProviderServerCapturingForm(t)
+	defer srv.Close()
+	router, sqldb := newTestRouterWithOAuthPlugin(t, srv.URL)
+
+	instanceID := createTestOAuthInstance(t, router, `{"client_id":"abc","tenant":"consumers"}`)
+
+	loc, _ := url.Parse(authorizeURL(t, router, instanceID))
+	state := loc.Query().Get("state")
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/oauth/callback?code=auth-code-1&state="+url.QueryEscape(state), nil))
+	if rec.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, want 302 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if loc, _ := url.Parse(rec.Header().Get("Location")); loc.Query().Get("oauth") != "success" {
+		t.Errorf("redirect = %q, want oauth=success", rec.Header().Get("Location"))
+	}
+
+	tok, err := db.GetOAuthToken(sqldb, instanceID)
+	if err != nil {
+		t.Fatalf("GetOAuthToken: %v", err)
+	}
+	if tok.AccessToken != "access-from-code" {
+		t.Errorf("AccessToken = %q, want access-from-code", tok.AccessToken)
+	}
+
+	if _, present := (*capturedForm)["client_secret"]; present {
+		t.Errorf("token request sent client_secret=%q, want it omitted entirely for a public client", capturedForm.Get("client_secret"))
+	}
+	if capturedForm.Get("code_verifier") == "" {
+		t.Error("token request has no code_verifier, want the PKCE verifier generated at authorize time")
+	}
 }
 
 func TestOAuthAuthorizeMissingCredentialsReturns400(t *testing.T) {

@@ -18,6 +18,11 @@ import (
 // refresh-token-only call, since providers don't validate redirect_uri
 // on the refresh grant) -- pass "" when building a Config just to
 // refresh an existing token.
+//
+// client_secret is optional: a public client (what Microsoft issues for
+// personal/consumer accounts, and increasingly recommends generally) has
+// none to submit, and PKCE covers the same request-legitimacy proof a
+// secret would (see Config.ClientSecret). Only client_id is required.
 func ConfigFromManifest(manifest plugindata.DataPluginManifest, instanceConfigJSON, redirectURL string) (Config, error) {
 	if manifest.OAuthConfig == nil {
 		return Config{}, errors.New("plugin manifest has no OAuthConfig")
@@ -28,8 +33,8 @@ func ConfigFromManifest(manifest plugindata.DataPluginManifest, instanceConfigJS
 	}
 	clientID, _ := cfg["client_id"].(string)
 	clientSecret, _ := cfg["client_secret"].(string)
-	if clientID == "" || clientSecret == "" {
-		return Config{}, errors.New("client_id and client_secret must be configured before authorizing")
+	if clientID == "" {
+		return Config{}, errors.New("client_id must be configured before authorizing")
 	}
 	var tenant string
 	if manifest.OAuthConfig.TenantField != "" {

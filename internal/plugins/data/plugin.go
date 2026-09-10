@@ -27,13 +27,27 @@ type DataPlugin interface {
 // rendered as a form, and the plugin is configured with whatever the user
 // submits.
 type DataPluginManifest struct {
-	ID                  string
-	Name                string
-	Description         string
-	DataShapes          []string
-	SetupFields         []SetupField
-	AuthType            string // "none", "api_key", "oauth2"
-	OAuthConfig         *OAuthConfig
+	ID          string
+	Name        string
+	Description string
+	DataShapes  []string
+	SetupFields []SetupField
+	AuthType    string // "none", "api_key", "oauth2"
+	OAuthConfig *OAuthConfig
+	// SetupGuide is an optional numbered walkthrough shown above an
+	// OAuth2 plugin's setup form -- for a provider like Microsoft that
+	// requires the admin to create their own app registration before a
+	// Client ID even exists to type in, a bare "Client ID" text field
+	// gives no clue what that means or where to get one. Each entry is
+	// one step's plain text; a step may contain the literal placeholder
+	// "{redirect_uri}", which the admin UI substitutes with this
+	// instance's own OAuth callback URL (computed client-side from
+	// window.location.origin, the same value the server itself derives
+	// per-request in internal/api/oauth_handlers.go's callbackURL) --
+	// the exact value the admin needs to paste into the provider's
+	// redirect URI field for it to work. Nil/empty for a plugin whose
+	// setup needs no such walkthrough.
+	SetupGuide          []string
 	RecommendedInterval time.Duration
 	MinInterval         time.Duration
 }

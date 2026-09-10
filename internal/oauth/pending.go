@@ -16,15 +16,19 @@ const pendingTTL = 10 * time.Minute
 // initiated it and reject a request whose state it doesn't recognize
 // (forged, expired, or already used). It's deliberately in-memory, not
 // persisted -- an attempt abandoned by a server restart just has to be
-// retried from the Authorize button, which is harmless.
+// retried from the Authorize button, which is harmless. Also carries each
+// attempt's PKCE code verifier alongside its state token, since both are
+// generated at the same Begin call and need to travel together to the one
+// Consume call the callback makes.
 type PendingStore struct {
 	mu      sync.Mutex
 	entries map[string]pendingEntry
 }
 
 type pendingEntry struct {
-	instanceID int
-	expiresAt  time.Time
+	instanceID   int
+	codeVerifier string
+	expiresAt    time.Time
 }
 
 func NewPendingStore() *PendingStore {
@@ -32,31 +36,33 @@ func NewPendingStore() *PendingStore {
 }
 
 // Begin registers a new in-flight attempt for instanceID and returns its
-// state token.
-func (s *PendingStore) Begin(instanceID int) (string, error) {
-	state, err := NewState()
+// state token and PKCE code verifier.
+func (s *PendingStore) Begin(instanceID int) (state, codeVerifier string, err error) {
+	state, err = NewState()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
+	codeVerifier = NewCodeVerifier()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.evictExpiredLocked()
-	s.entries[state] = pendingEntry{instanceID: instanceID, expiresAt: time.Now().Add(pendingTTL)}
-	return state, nil
+	s.entries[state] = pendingEntry{instanceID: instanceID, codeVerifier: codeVerifier, expiresAt: time.Now().Add(pendingTTL)}
+	return state, codeVerifier, nil
 }
 
 // Consume validates and removes a state token, returning the plugin
-// instance ID it was issued for. Single-use: a state can't be replayed
-// once consumed, whether the first consumption succeeded or not.
-func (s *PendingStore) Consume(state string) (instanceID int, ok bool) {
+// instance ID and PKCE code verifier it was issued for. Single-use: a
+// state can't be replayed once consumed, whether the first consumption
+// succeeded or not.
+func (s *PendingStore) Consume(state string) (instanceID int, codeVerifier string, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry, found := s.entries[state]
 	delete(s.entries, state)
 	if !found || time.Now().After(entry.expiresAt) {
-		return 0, false
+		return 0, "", false
 	}
-	return entry.instanceID, true
+	return entry.instanceID, entry.codeVerifier, true
 }
 
 func (s *PendingStore) evictExpiredLocked() {

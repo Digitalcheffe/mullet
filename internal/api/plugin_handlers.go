@@ -38,6 +38,7 @@ type pluginManifestResponse struct {
 	DataShapes          []string             `json:"data_shapes"`
 	SetupFields         []setupFieldResponse `json:"setup_fields"`
 	AuthType            string               `json:"auth_type"`
+	SetupGuide          []string             `json:"setup_guide,omitempty"`
 	RecommendedInterval int                  `json:"recommended_interval_seconds"`
 	MinInterval         int                  `json:"min_interval_seconds"`
 }

@@ -133,6 +133,12 @@
   flex: none;
   white-space: nowrap;
 }
+button.display-summary-link {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
 
 .plugin-list {
   display: flex;

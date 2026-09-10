@@ -151,6 +151,13 @@ export default function Dashboard() {
                       </span>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    className="display-summary-link"
+                    onClick={() => window.open(`/display/${d.slug}`, '_blank', 'noopener,noreferrer')}
+                  >
+                    View
+                  </button>
                   {d.first_screen_id != null ? (
                     <Link className="display-summary-link" to={`/admin/displays/${d.id}/screens/${d.first_screen_id}/design`}>
                       Open in Designer →

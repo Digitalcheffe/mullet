@@ -171,7 +171,7 @@ func TestScreenCRUD(t *testing.T) {
 		t.Fatalf("CreateDisplay: %v", err)
 	}
 
-	id, err := CreateScreen(sqldb, displayID, "Main", 0, 16, 40, 8)
+	id, err := CreateScreen(sqldb, displayID, "Main", 0, 16, 40, 8, "freeform")
 	if err != nil {
 		t.Fatalf("CreateScreen: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestScreenCRUD(t *testing.T) {
 		t.Fatalf("screens = %+v, want 1 entry", screens)
 	}
 
-	if err := UpdateScreen(sqldb, id, "Detail", 1, 12, 50, 10); err != nil {
+	if err := UpdateScreen(sqldb, id, "Detail", 1, 12, 50, 10, "freeform"); err != nil {
 		t.Fatalf("UpdateScreen: %v", err)
 	}
 	got, _ = GetScreen(sqldb, id)
@@ -211,7 +211,7 @@ func TestScreenCRUD(t *testing.T) {
 func TestCreateScreenUnknownDisplayReturnsErrInUse(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	if _, err := CreateScreen(sqldb, 9999, "Main", 0, 16, 40, 8); !errors.Is(err, ErrInUse) {
+	if _, err := CreateScreen(sqldb, 9999, "Main", 0, 16, 40, 8, "freeform"); !errors.Is(err, ErrInUse) {
 		t.Errorf("CreateScreen(unknown display) = %v, want ErrInUse", err)
 	}
 }
@@ -219,7 +219,7 @@ func TestCreateScreenUnknownDisplayReturnsErrInUse(t *testing.T) {
 func TestUpdateDeleteMissingScreenReturnsErrNotFound(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	if err := UpdateScreen(sqldb, 9999, "X", 0, 16, 40, 8); !errors.Is(err, ErrNotFound) {
+	if err := UpdateScreen(sqldb, 9999, "X", 0, 16, 40, 8, "freeform"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateScreen(missing) = %v, want ErrNotFound", err)
 	}
 	if err := DeleteScreen(sqldb, 9999); !errors.Is(err, ErrNotFound) {
@@ -234,7 +234,7 @@ func TestDeletingDisplayCascadesToScreensAndCards(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateDisplay: %v", err)
 	}
-	screenID, err := CreateScreen(sqldb, displayID, "Main", 0, 16, 40, 8)
+	screenID, err := CreateScreen(sqldb, displayID, "Main", 0, 16, 40, 8, "freeform")
 	if err != nil {
 		t.Fatalf("CreateScreen: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestCardCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateDisplay: %v", err)
 	}
-	screenID, err := CreateScreen(sqldb, displayID, "Main", 0, 16, 40, 8)
+	screenID, err := CreateScreen(sqldb, displayID, "Main", 0, 16, 40, 8, "freeform")
 	if err != nil {
 		t.Fatalf("CreateScreen: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestCreateCardUnknownDataPluginInstanceReturnsErrInUse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateDisplay: %v", err)
 	}
-	screenID, err := CreateScreen(sqldb, displayID, "Main", 0, 16, 40, 8)
+	screenID, err := CreateScreen(sqldb, displayID, "Main", 0, 16, 40, 8, "freeform")
 	if err != nil {
 		t.Fatalf("CreateScreen: %v", err)
 	}
@@ -365,7 +365,7 @@ func TestDeletingDataPluginInstanceNullsCardReference(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateDisplay: %v", err)
 	}
-	screenID, err := CreateScreen(sqldb, displayID, "Main", 0, 16, 40, 8)
+	screenID, err := CreateScreen(sqldb, displayID, "Main", 0, 16, 40, 8, "freeform")
 	if err != nil {
 		t.Fatalf("CreateScreen: %v", err)
 	}

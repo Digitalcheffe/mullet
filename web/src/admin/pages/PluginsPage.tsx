@@ -230,8 +230,8 @@ export default function PluginsPage() {
       </section>
 
       {panel && (
-        <div className="modal-scrim" onClick={() => setPanel(null)}>
-          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-scrim">
+          <div className="modal-panel">
             <h2>{panel.mode === 'add' ? `Add ${panel.manifest.name}` : `Edit ${panel.instance.instance_name}`}</h2>
             <ManifestForm
               manifest={panel.manifest}

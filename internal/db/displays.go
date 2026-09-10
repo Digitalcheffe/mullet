@@ -243,24 +243,25 @@ func DeleteDisplay(sqldb *sql.DB, id int) error {
 // Screen is a page within a display; a display rotates through its
 // screens.
 type Screen struct {
-	ID        int
-	DisplayID int
-	Name      string
-	Position  int
-	Columns   int
-	RowHeight int
-	Gap       int
+	ID         int
+	DisplayID  int
+	Name       string
+	Position   int
+	Columns    int
+	RowHeight  int
+	Gap        int
+	LayoutMode string
 }
 
 func scanScreen(row interface{ Scan(...any) error }) (Screen, error) {
 	var s Screen
-	if err := row.Scan(&s.ID, &s.DisplayID, &s.Name, &s.Position, &s.Columns, &s.RowHeight, &s.Gap); err != nil {
+	if err := row.Scan(&s.ID, &s.DisplayID, &s.Name, &s.Position, &s.Columns, &s.RowHeight, &s.Gap, &s.LayoutMode); err != nil {
 		return Screen{}, err
 	}
 	return s, nil
 }
 
-const screenColumns = `id, display_id, name, position, columns, row_height, gap`
+const screenColumns = `id, display_id, name, position, columns, row_height, gap, layout_mode`
 
 // ListScreensByDisplay returns every screen belonging to displayID, in
 // rotation order.
@@ -297,10 +298,10 @@ func GetScreen(sqldb *sql.DB, id int) (Screen, error) {
 
 // CreateScreen inserts a new screen under displayID and returns its ID.
 // Returns ErrInUse if displayID doesn't exist.
-func CreateScreen(sqldb *sql.DB, displayID int, name string, position, columns, rowHeight, gap int) (int, error) {
+func CreateScreen(sqldb *sql.DB, displayID int, name string, position, columns, rowHeight, gap int, layoutMode string) (int, error) {
 	result, err := sqldb.Exec(
-		`INSERT INTO screens (display_id, name, position, columns, row_height, gap) VALUES (?, ?, ?, ?, ?, ?)`,
-		displayID, name, position, columns, rowHeight, gap,
+		`INSERT INTO screens (display_id, name, position, columns, row_height, gap, layout_mode) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		displayID, name, position, columns, rowHeight, gap, layoutMode,
 	)
 	if err != nil {
 		if isForeignKeyViolation(err) {
@@ -318,10 +319,10 @@ func CreateScreen(sqldb *sql.DB, displayID int, name string, position, columns, 
 // UpdateScreen overwrites an existing screen's editable fields (not
 // including display_id -- a screen doesn't move between displays).
 // Returns ErrNotFound if id doesn't exist.
-func UpdateScreen(sqldb *sql.DB, id int, name string, position, columns, rowHeight, gap int) error {
+func UpdateScreen(sqldb *sql.DB, id int, name string, position, columns, rowHeight, gap int, layoutMode string) error {
 	result, err := sqldb.Exec(
-		`UPDATE screens SET name = ?, position = ?, columns = ?, row_height = ?, gap = ? WHERE id = ?`,
-		name, position, columns, rowHeight, gap, id,
+		`UPDATE screens SET name = ?, position = ?, columns = ?, row_height = ?, gap = ?, layout_mode = ? WHERE id = ?`,
+		name, position, columns, rowHeight, gap, layoutMode, id,
 	)
 	if err != nil {
 		return fmt.Errorf("updating screen %d: %w", id, err)

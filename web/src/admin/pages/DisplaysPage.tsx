@@ -217,6 +217,12 @@ export default function DisplaysPage() {
                     /display/{d.slug} &middot; every {d.rotation_seconds}s &middot; theme: {themeName(d.theme_id)}
                   </div>
                 </div>
+                <button
+                  className="btn-secondary"
+                  onClick={() => window.open(`/display/${d.slug}`, '_blank', 'noopener,noreferrer')}
+                >
+                  View
+                </button>
                 <button className="btn-secondary" onClick={() => selectDisplay(selectedDisplayId === d.id ? null : d.id)}>
                   {selectedDisplayId === d.id ? 'Hide screens' : 'Screens'}
                 </button>

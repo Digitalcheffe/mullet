@@ -78,6 +78,35 @@ export default function DesignerPage() {
   const [loading, setLoading] = useState(true);
   const [selectedCardId, setSelectedCardId] = useState<number | null>(null);
   const draggingPluginRef = useRef<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Every card mutation already persists immediately (drag, resize,
+  // add, delete, settings) -- there's no separate "Save" step to gate
+  // behind a button. This just surfaces that autosave visibly while
+  // you're in the Designer, since nothing else in the UI indicated it
+  // was happening.
+  async function withSaveStatus(action: () => Promise<void>) {
+    if (savedTimeoutRef.current) {
+      clearTimeout(savedTimeoutRef.current);
+      savedTimeoutRef.current = null;
+    }
+    setSaveStatus('saving');
+    try {
+      await action();
+      setSaveStatus('saved');
+      savedTimeoutRef.current = setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch (err) {
+      setSaveStatus('error');
+      throw err;
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
+    };
+  }, []);
 
   const load = useCallback(() => {
     return Promise.all([
@@ -125,80 +154,101 @@ export default function DesignerPage() {
       }),
     );
 
-    await Promise.all(
-      changed.map((item) => {
-        const card = cards.find((c) => String(c.id) === item.i)!;
-        return apiFetch(`/api/admin/cards/${card.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ui_plugin_id: card.ui_plugin_id,
-            data_plugin_instance_id: card.data_plugin_instance_id ?? null,
-            x: item.x,
-            y: item.y,
-            w: item.w,
-            h: item.h,
-            config: card.config,
-            theme_override: card.theme_override ?? null,
-          }),
-        });
-      }),
-    );
-    await load();
+    await withSaveStatus(async () => {
+      await Promise.all(
+        changed.map((item) => {
+          const card = cards.find((c) => String(c.id) === item.i)!;
+          return apiFetch(`/api/admin/cards/${card.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ui_plugin_id: card.ui_plugin_id,
+              data_plugin_instance_id: card.data_plugin_instance_id ?? null,
+              x: item.x,
+              y: item.y,
+              w: item.w,
+              h: item.h,
+              config: card.config,
+              theme_override: card.theme_override ?? null,
+            }),
+          });
+        }),
+      );
+      await load();
+    });
+  }
+
+  async function createCard(uiPluginId: string, x: number, y: number, w: number, h: number) {
+    await withSaveStatus(async () => {
+      await apiFetch(`/api/admin/screens/${screenId}/cards`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ui_plugin_id: uiPluginId,
+          data_plugin_instance_id: null,
+          x,
+          y,
+          w,
+          h,
+          config: {},
+          theme_override: null,
+        }),
+      });
+      await load();
+    });
   }
 
   async function handleDrop(_finalLayout: Layout, item: LayoutItem | undefined) {
     const uiPluginId = draggingPluginRef.current;
     draggingPluginRef.current = null;
     if (!uiPluginId || !item) return;
+    await createCard(uiPluginId, item.x, item.y, item.w, item.h);
+  }
 
-    await apiFetch(`/api/admin/screens/${screenId}/cards`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ui_plugin_id: uiPluginId,
-        data_plugin_instance_id: null,
-        x: item.x,
-        y: item.y,
-        w: item.w,
-        h: item.h,
-        config: {},
-        theme_override: null,
-      }),
-    });
-    await load();
+  // Escape hatch for native HTML5 drag-and-drop, which depends on the
+  // browser/OS actually recognizing the gesture as a drag (inconsistent
+  // across browsers, trackpads, and touch devices -- see issue #79).
+  // Double-clicking a palette item places it directly, stacked below
+  // whatever's already on the grid, no drag required.
+  async function handlePaletteDoubleClick(uiPluginId: string) {
+    const bottom = cards.reduce((max, c) => Math.max(max, c.y + c.h), 0);
+    await createCard(uiPluginId, 0, bottom, DEFAULT_CARD_SIZE.w, DEFAULT_CARD_SIZE.h);
   }
 
   async function handleDeleteCard(cardId: number) {
     if (!confirm('Remove this card?')) return;
-    await apiFetch(`/api/admin/cards/${cardId}`, { method: 'DELETE' });
-    if (selectedCardId === cardId) setSelectedCardId(null);
-    load();
+    await withSaveStatus(async () => {
+      await apiFetch(`/api/admin/cards/${cardId}`, { method: 'DELETE' });
+      if (selectedCardId === cardId) setSelectedCardId(null);
+      await load();
+    });
   }
 
   async function handleSaveCardSettings(
     card: Card,
     values: { data_plugin_instance_id: number | null; config: unknown; theme_override: Partial<ThemeTokens> | null },
   ) {
-    const res = await apiFetch(`/api/admin/cards/${card.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ui_plugin_id: card.ui_plugin_id,
-        data_plugin_instance_id: values.data_plugin_instance_id,
-        x: card.x,
-        y: card.y,
-        w: card.w,
-        h: card.h,
-        config: values.config,
-        theme_override: values.theme_override,
-      }),
+    await withSaveStatus(async () => {
+      const res = await apiFetch(`/api/admin/cards/${card.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ui_plugin_id: card.ui_plugin_id,
+          data_plugin_instance_id: values.data_plugin_instance_id,
+          x: card.x,
+          y: card.y,
+          w: card.w,
+          h: card.h,
+          config: values.config,
+          theme_override: values.theme_override,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error(await readErrorMessage(res, 'Save failed'));
+      }
+      setSelectedCardId(null);
+      await load();
     });
-    if (!res.ok) {
-      throw new Error(await readErrorMessage(res, 'Save failed'));
-    }
-    setSelectedCardId(null);
-    await load();
   }
 
   if (loading || !screen) {
@@ -232,6 +282,13 @@ export default function DesignerPage() {
           </div>
         )}
         <div className="designer-toolbar-spacer" />
+        {saveStatus !== 'idle' && (
+          <span className={`designer-save-status designer-save-status-${saveStatus}`}>
+            {saveStatus === 'saving' && 'Saving…'}
+            {saveStatus === 'saved' && 'Saved'}
+            {saveStatus === 'error' && 'Save failed'}
+          </span>
+        )}
         <p className="designer-subtitle">
           {screen.columns} columns &middot; {screen.row_height}px rows &middot; {screen.gap}px gap
         </p>
@@ -240,7 +297,7 @@ export default function DesignerPage() {
       <div className="designer-layout">
         <aside className="designer-palette">
           <h2>UI Plugins</h2>
-          <p className="palette-help">Drag onto the grid to place a card.</p>
+          <p className="palette-help">Drag onto the grid to place a card, or double-click to add it instantly.</p>
           {uiPlugins.map((plugin) => (
             <div
               key={plugin.id}
@@ -251,6 +308,7 @@ export default function DesignerPage() {
                 e.dataTransfer.effectAllowed = 'copy';
                 e.dataTransfer.setData('text/plain', plugin.id);
               }}
+              onDoubleClick={() => handlePaletteDoubleClick(plugin.id)}
             >
               {plugin.name}
             </div>

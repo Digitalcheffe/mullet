@@ -73,7 +73,7 @@ func (p *Plugin) Manifest() plugindata.DataPluginManifest {
 	return plugindata.DataPluginManifest{
 		ID:          ID,
 		Name:        "ICS Calendar Feed",
-		Description: "Universal calendar connector for any ICS/iCal URL: Outlook personal, Google Calendar, Apple Calendar, Nextcloud, school/league calendars, self-hosted. No OAuth required.",
+		Description: "Universal calendar connector for any ICS/iCal URL -- Outlook, Google, Apple, Nextcloud, and more. No OAuth required.",
 		DataShapes:  []string{shapeEvents},
 		AuthType:    "none",
 		SetupFields: []plugindata.SetupField{

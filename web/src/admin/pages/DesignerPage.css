@@ -88,6 +88,21 @@
   flex: none;
 }
 
+.designer-save-status {
+  font: 700 11.5px var(--font-body);
+  flex: none;
+  margin-right: 14px;
+}
+.designer-save-status-saving {
+  color: var(--ink-soft);
+}
+.designer-save-status-saved {
+  color: var(--ok);
+}
+.designer-save-status-error {
+  color: var(--error);
+}
+
 .designer-layout {
   display: flex;
   align-items: flex-start;
@@ -185,6 +200,14 @@
   color: var(--ink);
   font-size: 11px;
   cursor: pointer;
+  /* The card's resize handles (react-resizable's own .react-resizable-handle-*
+     spans) render after these buttons in the DOM and share the same
+     default stacking context, so their overlapping hit areas in the top
+     corners/edges would otherwise win every click -- these buttons never
+     receive the click at all, not even a mousedown. A z-index above the
+     (unset, so implicitly 0) handles fixes hit-testing without touching
+     the handles themselves. */
+  z-index: 2;
 }
 .card-settings-btn {
   right: 28px;

@@ -20,20 +20,31 @@
 }
 
 .available-plugins {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 9px;
 }
 
 .available-plugin-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 13px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
+}
+.available-plugin-card .btn-secondary {
+  align-self: stretch;
+  /* Grid rows stretch every card to match the row's tallest sibling
+     (a longer description, e.g. "ICS Calendar Feed"), so cards in the
+     same row share one clean height. Pinning the button to the bottom
+     (rather than leaving it directly under a short description) turns
+     that leftover height into a consistent gap above the button on
+     every card, instead of dead space stranded below a short one. */
+  margin-top: auto;
+  text-align: center;
 }
 
 .plugin-card-name {

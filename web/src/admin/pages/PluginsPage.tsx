@@ -157,23 +157,6 @@ export default function PluginsPage() {
       )}
 
       <section>
-        <h2>Available Plugins</h2>
-        <div className="available-plugins">
-          {manifests.map((m) => (
-            <div className="available-plugin-card" key={m.id}>
-              <div>
-                <div className="plugin-card-name">{m.name}</div>
-                <div className="plugin-card-desc">{m.description}</div>
-              </div>
-              <button className="btn-secondary" onClick={() => setPanel({ mode: 'add', manifest: m })}>
-                + Add
-              </button>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section>
         <h2>Configured Instances</h2>
         {instances.length === 0 ? (
           <div className="empty-state">No plugin instances configured yet.</div>
@@ -227,6 +210,23 @@ export default function PluginsPage() {
             ))}
           </div>
         )}
+      </section>
+
+      <section>
+        <h2>Available Plugins</h2>
+        <div className="available-plugins">
+          {manifests.map((m) => (
+            <div className="available-plugin-card" key={m.id}>
+              <div>
+                <div className="plugin-card-name">{m.name}</div>
+                <div className="plugin-card-desc">{m.description}</div>
+              </div>
+              <button className="btn-secondary" onClick={() => setPanel({ mode: 'add', manifest: m })}>
+                + Add
+              </button>
+            </div>
+          ))}
+        </div>
       </section>
 
       {panel && (

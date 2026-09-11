@@ -61,14 +61,14 @@ function TaskListComponent({ data, config, size, theme, pluginInstanceId }: Widg
 
   if (visible.length === 0) {
     return (
-      <div className="task-list-widget tl-empty" style={style}>
+      <div className="task-list-widget tl-empty mullet-card" style={style}>
         Nothing to do
       </div>
     );
   }
 
   return (
-    <div className="task-list-widget" style={style}>
+    <div className="task-list-widget mullet-card" style={style}>
       {[...byList.entries()].map(([listID, tasks]) => (
         <div className="tl-group" key={listID}>
           <div className="tl-group-header">{listByID.get(listID)?.name ?? 'Tasks'}</div>

@@ -37,14 +37,14 @@ function MediaNowPlayingComponent({ data, config, size, theme }: WidgetProps<Med
 
   if (!player || (!player.is_playing && !player.title)) {
     return (
-      <div className="media-now-playing-widget mnp-empty" style={style}>
+      <div className="media-now-playing-widget mnp-empty mullet-card" style={style}>
         Nothing playing
       </div>
     );
   }
 
   return (
-    <div className={`media-now-playing-widget${compact ? ' mnp-compact' : ''}`} style={style}>
+    <div className={`media-now-playing-widget mullet-card${compact ? ' mnp-compact' : ''}`} style={style}>
       {showAlbumArt && !compact && (
         <div className="mnp-art">
           {player.album_art_url ? <img src={player.album_art_url} alt="" /> : <span className="mnp-art-placeholder">🎵</span>}

@@ -33,7 +33,7 @@ function ClockComponent({ config, size, theme }: WidgetProps<unknown>) {
   const style = cardStyle(theme);
 
   return (
-    <div className={`clock-widget${compact ? ' clock-compact' : ''}`} style={style}>
+    <div className={`clock-widget mullet-card${compact ? ' clock-compact' : ''}`} style={style}>
       <span className="clock-time">{formatTime(now, format)}</span>
       {showDate && !compact && <span className="clock-date">{formatDate(now)}</span>}
     </div>

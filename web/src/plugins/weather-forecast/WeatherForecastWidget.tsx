@@ -47,14 +47,14 @@ function WeatherForecastComponent({ data, config, size, theme }: WidgetProps<Wea
 
   if (days.length === 0) {
     return (
-      <div className="weather-forecast-widget wf-empty" style={style}>
+      <div className="weather-forecast-widget wf-empty mullet-card" style={style}>
         No forecast data yet
       </div>
     );
   }
 
   return (
-    <div className="weather-forecast-widget" style={style}>
+    <div className="weather-forecast-widget mullet-card" style={style}>
       {days.map((d) => (
         <div className="wf-day" key={d.id}>
           <div className="wf-label">{dayLabel(d.date)}</div>

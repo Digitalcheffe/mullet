@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useApiFetch } from '../auth/useApiFetch';
 import ThemeTokenFields from '../components/ThemeTokenFields';
 import { backgroundCSS, defaultTheme, type ThemeTokens } from '../../shared/themes/tokens';
+import { cardStyle } from '../../plugins/shared/cardStyle';
 import { themePresets } from '../../shared/themes/presets';
 import { validateThemeTokens } from '../../shared/themes/validateTokens';
 import { downloadJSON, slugify } from '../../shared/downloadJSON';
@@ -22,15 +23,14 @@ function previewStyles(tokens: ThemeTokens) {
     flexWrap: 'wrap',
     gap: '16px',
   };
+  // Reuses the real cardStyle() a widget would get on the actual
+  // display, rather than a hand-duplicated copy of the same properties
+  // -- guarantees this preview can never drift out of sync with what
+  // opacity/blur/etc. actually do on a live card (issue #75). The
+  // matching `mullet-card` class name is applied where this is rendered
+  // below, same as every widget's own root element.
   const card: CSSProperties = {
-    background: tokens.cardBackground,
-    border: `1px solid ${tokens.cardBorder}`,
-    borderRadius: tokens.borderRadius,
-    backdropFilter: `blur(${tokens.blur})`,
-    opacity: tokens.opacity,
-    color: tokens.textColor,
-    fontFamily: tokens.fontFamily,
-    fontSize: tokens.fontSize,
+    ...cardStyle(tokens),
     padding: '16px',
     width: '150px',
     height: '96px',
@@ -199,15 +199,15 @@ export default function ThemeEditorPage() {
         <div className="theme-editor-preview">
           <h2>Live Preview</h2>
           <div className="preview-screen" style={preview.container}>
-            <div style={preview.card}>
+            <div className="mullet-card" style={preview.card}>
               <div>12:45 PM</div>
               <div style={preview.accent}>Clock</div>
             </div>
-            <div style={preview.card}>
+            <div className="mullet-card" style={preview.card}>
               <div>72°F, Sunny</div>
               <div style={preview.accent}>Weather</div>
             </div>
-            <div style={preview.card}>
+            <div className="mullet-card" style={preview.card}>
               <div>3 events today</div>
               <div style={preview.accent}>Calendar</div>
             </div>

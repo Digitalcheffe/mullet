@@ -1,0 +1,23 @@
+/* Shared card background layer for every UI plugin, paired with
+   cardStyle.ts's cardStyle() -- see that file's doc comment. Keeping
+   the background/blur/opacity on a `::before` pseudo-element rather
+   than the card's own box means `opacity` fades the glass background
+   without fading the card's own text/icons along with it (issue #75).
+   `isolation: isolate` gives the pseudo-element its own stacking
+   context so its z-index:-1 stays behind this card's own content
+   without reaching back into unrelated page content. */
+.mullet-card {
+  position: relative;
+  isolation: isolate;
+}
+.mullet-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--mullet-card-background);
+  border: 1px solid var(--mullet-card-border);
+  backdrop-filter: blur(var(--mullet-card-blur));
+  opacity: var(--mullet-card-opacity);
+}

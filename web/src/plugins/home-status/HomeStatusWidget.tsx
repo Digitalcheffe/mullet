@@ -56,7 +56,7 @@ function HomeStatusComponent({ data, config, size, theme }: WidgetProps<HomeDevi
 
   if (data.length === 0) {
     return (
-      <div className="home-status-widget hs-empty" style={style}>
+      <div className="home-status-widget hs-empty mullet-card" style={style}>
         No devices yet
       </div>
     );
@@ -70,7 +70,7 @@ function HomeStatusComponent({ data, config, size, theme }: WidgetProps<HomeDevi
   }
 
   return (
-    <div className="home-status-widget" style={style}>
+    <div className="home-status-widget mullet-card" style={style}>
       {[...byArea.entries()].map(([area, devices]) => (
         <div className="hs-group" key={area}>
           {!compact && <div className="hs-group-header">{area}</div>}

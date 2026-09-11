@@ -48,14 +48,14 @@ function ExampleWidgetComponent({ data, config, theme }: WidgetProps<ExampleRow>
 
   if (!current) {
     return (
-      <div className="example-widget ew-empty" style={style}>
+      <div className="example-widget ew-empty mullet-card" style={style}>
         No data yet
       </div>
     );
   }
 
   return (
-    <div className="example-widget" style={style}>
+    <div className="example-widget mullet-card" style={style}>
       <span className="ew-temp">
         {Math.round(current.temp)}
         {unit}

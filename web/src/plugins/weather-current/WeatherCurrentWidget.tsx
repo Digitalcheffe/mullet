@@ -46,14 +46,14 @@ function WeatherCurrentComponent({ data, config, size, theme }: WidgetProps<Weat
 
   if (!current) {
     return (
-      <div className="weather-current-widget wc-empty" style={style}>
+      <div className="weather-current-widget wc-empty mullet-card" style={style}>
         No data yet
       </div>
     );
   }
 
   return (
-    <div className={`weather-current-widget${compact ? ' wc-compact' : ''}`} style={style}>
+    <div className={`weather-current-widget mullet-card${compact ? ' wc-compact' : ''}`} style={style}>
       <div className="wc-main">
         <span className="wc-glyph">{conditionGlyph(current.condition)}</span>
         <span className="wc-temp">

@@ -83,7 +83,7 @@ function CalendarAgendaComponent({ data, config, size, theme, pluginInstanceId }
   const style = cardStyle(theme);
 
   return (
-    <div className="calendar-agenda-widget" style={style}>
+    <div className="calendar-agenda-widget mullet-card" style={style}>
       {dayList.map(({ key, date }) => {
         const events = byDay.get(key)!;
         return (

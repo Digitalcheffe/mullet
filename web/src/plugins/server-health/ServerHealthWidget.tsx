@@ -59,14 +59,14 @@ function ServerHealthComponent({ data, config, size, theme }: WidgetProps<InfraS
 
   if (data.length === 0) {
     return (
-      <div className="server-health-widget sh-empty" style={style}>
+      <div className="server-health-widget sh-empty mullet-card" style={style}>
         No services yet
       </div>
     );
   }
 
   return (
-    <div className="server-health-widget" style={style}>
+    <div className="server-health-widget mullet-card" style={style}>
       {data.map((svc) => (
         <div className="sh-service" key={svc.id}>
           <div className="sh-service-header">

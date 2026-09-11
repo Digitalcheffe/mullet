@@ -71,14 +71,14 @@ function PackageTrackerComponent({ data, config, size, theme }: WidgetProps<Pack
 
   if (visible.length === 0) {
     return (
-      <div className="package-tracker-widget pt-empty" style={style}>
+      <div className="package-tracker-widget pt-empty mullet-card" style={style}>
         No packages incoming
       </div>
     );
   }
 
   return (
-    <div className="package-tracker-widget" style={style}>
+    <div className="package-tracker-widget mullet-card" style={style}>
       {visible.map((p) => (
         <div className="pt-package" key={p.id}>
           <div className="pt-row">

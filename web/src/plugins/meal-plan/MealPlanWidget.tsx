@@ -58,7 +58,7 @@ function MealPlanComponent({ data, config, size, theme }: WidgetProps<EventRow>)
   const style = cardStyle(theme);
 
   return (
-    <div className="meal-plan-widget" style={{ ...style, gridTemplateColumns: `repeat(${days}, 1fr)` }}>
+    <div className="meal-plan-widget mullet-card" style={{ ...style, gridTemplateColumns: `repeat(${days}, 1fr)` }}>
       {dayList.map(({ key, date }) => {
         const meals = byDay.get(key)!;
         return (

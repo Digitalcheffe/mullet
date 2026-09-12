@@ -181,10 +181,32 @@ export default function ClientsPage() {
 
   const pending = clients.filter((c) => c.status === 'pending');
   const others = clients.filter((c) => c.status !== 'pending');
+  const registerURL = `${window.location.origin}/register`;
 
   return (
     <div className="clients-page">
       <h1>Clients</h1>
+
+      <section>
+        <div className="section-header">
+          <h2>Add a Screen</h2>
+        </div>
+        <p className="section-note">
+          The simplest way to connect a screen: open a browser on it and pair it right here -- no
+          separate app to install.
+        </p>
+        <ol className="register-steps">
+          <li>
+            On the screen&rsquo;s device, open a browser and go to{' '}
+            <code className="register-url">{registerURL}</code>
+          </li>
+          <li>Give it a name. It&rsquo;ll show a pairing code and wait for approval.</li>
+          <li>
+            It shows up below under &ldquo;Waiting for Approval&rdquo; -- click <strong>Approve</strong> and
+            choose which display it should show.
+          </li>
+        </ol>
+      </section>
 
       {pending.length > 0 && (
         <section>
@@ -222,9 +244,7 @@ export default function ClientsPage() {
           <h2>All Clients</h2>
         </div>
         {others.length === 0 ? (
-          <div className="empty-state">
-            No clients yet. Install a client app on an endpoint device and it will show up here once it registers.
-          </div>
+          <div className="empty-state">No clients yet -- see &ldquo;Add a Screen&rdquo; above to pair one.</div>
         ) : (
           <div className="client-list">
             {others.map((c) => (

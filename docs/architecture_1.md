@@ -642,6 +642,8 @@ For devices where installing the client isn't practical (iPad on the counter, a 
 
 The browser loads the React display app directly. No registration, no pairing code. The admin creates the display in the Display Designer and gives the user the URL to open.
 
+> **Note:** `/register` (issue #81) since shipped a browser-based stand-in for Scenario 1's pairing flow -- open it on the screen's device, give it a name, and approve the resulting pairing code from the admin's Clients page, same as a dedicated client app would. This section still applies as-is to anyone who'd rather skip pairing entirely and open a display's URL directly.
+
 #### What You Get
 
 - Full display rendering (grid, cards, themes, screen rotation)
@@ -650,7 +652,6 @@ The browser loads the React display app directly. No registration, no pairing co
 
 #### What You Don't Get
 
-- No device registration / pairing flow
 - No offline fallback (browser shows its own error page if server is down)
 - No HDMI-CEC / screen power management
 - No auto-start on boot (user must configure kiosk mode themselves)

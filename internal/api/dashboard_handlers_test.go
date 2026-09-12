@@ -3,12 +3,17 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Digitalcheffe/mullet/internal/auth"
+	"github.com/Digitalcheffe/mullet/internal/logging"
 )
 
 func authedRequest(t *testing.T, method, path string, body []byte) *http.Request {
@@ -201,6 +206,87 @@ func TestPutSettingsRejectsEmptyName(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+// resetLoggingToStdout undoes a test's own logging.Configure call --
+// handlePutSettings changes process-wide log output for real, and every
+// other test in this package (middleware's own access-log line alone)
+// calls log.Printf too, so a test that points logging at a temp file
+// must always put it back before that directory is removed.
+func resetLoggingToStdout(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		if err := logging.Configure(""); err != nil {
+			t.Errorf("resetting logging to stdout: %v", err)
+		}
+	})
+}
+
+func TestGetSettingsDefaultsLogFilePathToEmpty(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/settings", nil))
+	var resp settingsResponse
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp.LogFilePath != "" {
+		t.Errorf("LogFilePath (unsaved) = %q, want empty (stdout only)", resp.LogFilePath)
+	}
+}
+
+func TestPutSettingsSavesLogFilePathAndAppliesIt(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	path := filepath.Join(t.TempDir(), "mullet.log")
+	resetLoggingToStdout(t) // registered after TempDir's own cleanup (Windows can't delete an open file)
+
+	body, _ := json.Marshal(updateSettingsRequest{ServerName: "Mullet", LogFilePath: path})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/settings", body))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("PUT status = %d, want 204 (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/settings", nil))
+	var resp settingsResponse
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp.LogFilePath != path {
+		t.Errorf("LogFilePath after update = %q, want %q", resp.LogFilePath, path)
+	}
+
+	// The setting isn't just persisted -- it took effect immediately,
+	// without a restart.
+	log.Print("PUT_SETTINGS_LOG_TEST")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading log file: %v", err)
+	}
+	if !strings.Contains(string(data), "PUT_SETTINGS_LOG_TEST") {
+		t.Errorf("log file = %q, want it to contain the logged message", data)
+	}
+}
+
+func TestPutSettingsRejectsUnwritableLogFilePath(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	// A path inside a directory that doesn't exist can never be opened.
+	badPath := filepath.Join(t.TempDir(), "does-not-exist", "mullet.log")
+	resetLoggingToStdout(t)
+
+	body, _ := json.Marshal(updateSettingsRequest{ServerName: "Mullet", LogFilePath: badPath})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/settings", body))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	// Rejected outright, not silently saved with a broken destination.
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/settings", nil))
+	var resp settingsResponse
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp.LogFilePath != "" {
+		t.Errorf("LogFilePath after a rejected update = %q, want still empty", resp.LogFilePath)
 	}
 }
 

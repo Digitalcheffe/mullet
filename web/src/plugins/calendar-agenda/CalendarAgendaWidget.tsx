@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { UIPlugin, WidgetProps } from '../../shared/types/plugin';
 import { cardStyle } from '../shared/cardStyle';
 import { colorForID } from '../shared/idColor';
@@ -61,8 +62,18 @@ function CalendarAgendaComponent({ data, config, size, theme, pluginInstanceId }
   const calendars = useShapeData('calendars', pluginInstanceId) as unknown as CalendarRow[];
   const calendarByID = new Map(calendars.map((c) => [c.id, c]));
 
+  // A local tick independent of useShapeData's 60s poll -- otherwise
+  // "already passed" styling would only ever update when fresh event
+  // data happens to arrive, not as time actually passes.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => forceTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayKey = localDayKey(today);
   const dayList: { key: string; date: Date }[] = [];
   for (let i = 0; i < days; i++) {
     const d = new Date(today);
@@ -80,6 +91,15 @@ function CalendarAgendaComponent({ data, config, size, theme, pluginInstanceId }
   }
 
   const style = cardStyle(theme);
+
+  // All-day events are never "already passed" while still shown under
+  // today's heading -- they're active for the whole day, not a single
+  // instant, so there's no meaningful "passed" state to greyscale.
+  function isPastEvent(e: EventRow, dayKey: string): boolean {
+    if (dayKey !== todayKey || e.all_day) return false;
+    const endInstant = parseSQLDateTime(e.end ?? e.start);
+    return endInstant.getTime() < now.getTime();
+  }
 
   // Only the calendars actually represented in the visible day range --
   // a legend listing every configured calendar (including ones with no
@@ -108,8 +128,9 @@ function CalendarAgendaComponent({ data, config, size, theme, pluginInstanceId }
               events.map((e) => {
                 const cal = calendarByID.get(e.calendar_id);
                 const color = cal?.color || colorForID(e.calendar_id);
+                const past = isPastEvent(e, key);
                 return (
-                  <div className="ca-event" key={e.id} style={{ borderLeftColor: color }}>
+                  <div className={`ca-event${past ? ' ca-event--past' : ''}`} key={e.id} style={{ borderLeftColor: color }}>
                     <span className="ca-cal-pill" style={{ background: color }} title={cal?.name}>
                       {calendarInitial(cal?.name)}
                     </span>

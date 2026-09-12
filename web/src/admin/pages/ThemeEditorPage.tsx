@@ -14,6 +14,37 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
   return text || fallback;
 }
 
+// Split across the two columns so the (now much longer, issue #90)
+// field list doesn't turn the whole editor into one long scroll next to
+// a mostly-empty preview panel -- the fields most likely to need a
+// glance at the live preview while adjusting them (background, card
+// chrome, the two headline colors) stay on the left; typography and the
+// less visually-central semantic colors sit under the preview instead,
+// where there was otherwise dead space.
+const PRIMARY_FIELDS: (keyof ThemeTokens)[] = [
+  'background',
+  'cardBackground',
+  'cardBorder',
+  'cardStyle',
+  'textColor',
+  'accentColor',
+  'borderRadius',
+  'opacity',
+  'blur',
+];
+
+const SECONDARY_FIELDS: (keyof ThemeTokens)[] = [
+  'successColor',
+  'warningColor',
+  'errorColor',
+  'infoColor',
+  'fontFamily',
+  'headingFontFamily',
+  'fontSize',
+  'fontSizeSmall',
+  'fontSizeLarge',
+];
+
 function previewStyles(tokens: ThemeTokens) {
   const container: CSSProperties = {
     background: backgroundCSS(tokens.background),
@@ -115,21 +146,39 @@ export default function ThemeEditorPage() {
   const preview = previewStyles(tokens);
 
   return (
-    <div className="theme-editor-page">
+    // The whole page is the form, not just the two-column layout below --
+    // Save moved up next to Import/Export (issue #90 UX feedback), and an
+    // HTML submit button only needs to be a descendant of its <form>, not
+    // adjacent to the fields it saves. Every other button in here
+    // (Back, Import, Export, the preset swatches) is explicitly
+    // type="button" so none of them accidentally submit it.
+    <form className="theme-editor-page" onSubmit={handleSubmit}>
       <div className="theme-editor-header">
-        <button className="btn-secondary" onClick={() => navigate('/admin/themes')}>
+        <button type="button" className="btn-secondary" onClick={() => navigate('/admin/themes')}>
           ← Back to Themes
         </button>
         <h1>{isNew ? 'New Theme' : `Edit ${name || 'Theme'}`}</h1>
         <div className="theme-editor-header-actions">
+          <button type="button" className="btn-secondary" onClick={() => navigate('/admin/themes')}>
+            Cancel
+          </button>
           <button type="button" className="btn-secondary" onClick={() => setImportOpen(true)}>
             Import
           </button>
           <button type="button" className="btn-secondary" onClick={() => downloadJSON(`${slugify(name)}.json`, tokens)}>
             Export
           </button>
+          <button type="submit" className="btn-primary" disabled={submitting}>
+            {submitting ? 'Saving…' : 'Save theme'}
+          </button>
         </div>
       </div>
+
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
 
       {isNew && (
         <div className="theme-gallery">
@@ -166,14 +215,8 @@ export default function ThemeEditorPage() {
         </div>
       )}
 
-      <form className="theme-editor-layout" onSubmit={handleSubmit}>
+      <div className="theme-editor-layout">
         <div className="theme-editor-fields">
-          {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
-
           <label className="field">
             <span className="kicker">Name</span>
             <input value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
@@ -184,36 +227,45 @@ export default function ThemeEditorPage() {
             <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
           </label>
 
-          <ThemeTokenFields values={tokens} onChange={(v) => setTokens((prev) => ({ ...prev, ...v }))} onUploadImage={uploadImage} />
-
-          <div className="manifest-form-actions">
-            <button type="button" className="btn-secondary" onClick={() => navigate('/admin/themes')}>
-              Cancel
-            </button>
-            <button type="submit" className="btn-primary" disabled={submitting}>
-              {submitting ? 'Saving…' : 'Save theme'}
-            </button>
-          </div>
+          <ThemeTokenFields
+            values={tokens}
+            onChange={(v) => setTokens((prev) => ({ ...prev, ...v }))}
+            fields={PRIMARY_FIELDS}
+            onUploadImage={uploadImage}
+          />
         </div>
 
-        <div className="theme-editor-preview">
-          <h2>Live Preview</h2>
-          <div className="preview-screen" style={preview.container}>
-            <div className="mullet-card" style={preview.card}>
-              <div>12:45 PM</div>
-              <div style={preview.accent}>Clock</div>
-            </div>
-            <div className="mullet-card" style={preview.card}>
-              <div>72°F, Sunny</div>
-              <div style={preview.accent}>Weather</div>
-            </div>
-            <div className="mullet-card" style={preview.card}>
-              <div>3 events today</div>
-              <div style={preview.accent}>Calendar</div>
+        <div className="theme-editor-preview-col">
+          <div className="theme-editor-preview">
+            <h2>Live Preview</h2>
+            <div className="preview-screen" style={preview.container}>
+              <div className="mullet-card" style={preview.card}>
+                <div>12:45 PM</div>
+                <div style={preview.accent}>Clock</div>
+              </div>
+              <div className="mullet-card" style={preview.card}>
+                <div>72°F, Sunny</div>
+                <div style={preview.accent}>Weather</div>
+              </div>
+              <div className="mullet-card" style={preview.card}>
+                <div>3 events today</div>
+                <div style={preview.accent}>Calendar</div>
+              </div>
             </div>
           </div>
+
+          {/* Typography and the less visually-central semantic colors --
+              see PRIMARY_FIELDS/SECONDARY_FIELDS above for why these live
+              here instead of stacked under the fields on the left. */}
+          <div className="theme-editor-secondary-fields">
+            <ThemeTokenFields
+              values={tokens}
+              onChange={(v) => setTokens((prev) => ({ ...prev, ...v }))}
+              fields={SECONDARY_FIELDS}
+            />
+          </div>
         </div>
-      </form>
+      </div>
 
       {importOpen && (
         <div className="modal-scrim">
@@ -228,7 +280,7 @@ export default function ThemeEditorPage() {
           </div>
         </div>
       )}
-    </div>
+    </form>
   );
 }
 

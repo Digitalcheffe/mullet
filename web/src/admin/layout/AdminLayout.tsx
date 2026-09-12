@@ -26,7 +26,7 @@ export default function AdminLayout({ username, onSignOut }: AdminLayoutProps) {
     <div className="admin-layout">
       <nav className="admin-sidebar">
         <div className="admin-logo">
-          <span className="admin-logo-mark" />
+          <img className="admin-logo-mark" src="/logo-mark.png" alt="" />
           <span className="admin-logo-word">mullet</span>
         </div>
 

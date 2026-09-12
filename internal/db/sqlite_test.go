@@ -55,8 +55,8 @@ func TestOpenAndMigrate(t *testing.T) {
 	if err := sqldb.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("counting schema_migrations: %v", err)
 	}
-	if count != 14 {
-		t.Errorf("schema_migrations has %d rows, want 14", count)
+	if count != 15 {
+		t.Errorf("schema_migrations has %d rows, want 15", count)
 	}
 }
 
@@ -77,8 +77,8 @@ func TestMigrateSeedsDefaultTheme(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListThemes: %v", err)
 	}
-	if len(themes) != 4 {
-		t.Fatalf("themes = %+v, want 4 bundled themes (issue #31)", themes)
+	if len(themes) != 5 {
+		t.Fatalf("themes = %+v, want 5 bundled themes (issue #31, plus Mullet Brand from issue #90)", themes)
 	}
 	if themes[0].Name != "Dark Glass" || !themes[0].IsDefault {
 		t.Errorf("seeded theme = %+v, want (name=Dark Glass, is_default=true)", themes[0])
@@ -88,7 +88,12 @@ func TestMigrateSeedsDefaultTheme(t *testing.T) {
 	if err := json.Unmarshal([]byte(themes[0].Tokens), &tokens); err != nil {
 		t.Fatalf("seeded theme.Tokens is not valid JSON: %v", err)
 	}
-	for _, key := range []string{"background", "cardBackground", "cardBorder", "textColor", "accentColor", "fontFamily", "fontSize", "borderRadius", "opacity", "blur"} {
+	for _, key := range []string{
+		"background", "cardBackground", "cardBorder", "cardStyle", "textColor", "accentColor",
+		"successColor", "warningColor", "errorColor", "infoColor",
+		"fontFamily", "fontSize", "headingFontFamily", "fontSizeSmall", "fontSizeLarge",
+		"borderRadius", "opacity", "blur",
+	} {
 		if _, ok := tokens[key]; !ok {
 			t.Errorf("seeded theme.Tokens missing key %q", key)
 		}

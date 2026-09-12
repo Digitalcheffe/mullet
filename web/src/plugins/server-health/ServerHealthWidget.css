@@ -36,15 +36,15 @@
 }
 
 .sh-good {
-  background: #2ecc71;
+  background: var(--mullet-success);
 }
 
 .sh-warn {
-  background: #f1c40f;
+  background: var(--mullet-warning);
 }
 
 .sh-bad {
-  background: #e74c3c;
+  background: var(--mullet-error);
 }
 
 .sh-name {
@@ -98,15 +98,15 @@
 }
 
 .sh-bar-good {
-  background: #2ecc71;
+  background: var(--mullet-success);
 }
 
 .sh-bar-warn {
-  background: #f1c40f;
+  background: var(--mullet-warning);
 }
 
 .sh-bar-bad {
-  background: #e74c3c;
+  background: var(--mullet-error);
 }
 
 .sh-bar-value {

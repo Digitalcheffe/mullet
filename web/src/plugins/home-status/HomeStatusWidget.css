@@ -60,15 +60,15 @@
 }
 
 .hs-good {
-  background: #2ecc71;
+  background: var(--mullet-success);
 }
 
 .hs-warn {
-  background: #f1c40f;
+  background: var(--mullet-warning);
 }
 
 .hs-bad {
-  background: #e74c3c;
+  background: var(--mullet-error);
 }
 
 .hs-neutral {

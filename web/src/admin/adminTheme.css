@@ -15,8 +15,12 @@
   --ink: #2a2320;
   --ink-soft: #8a7e73;
   --border: #e7e0d6;
-  --accent: oklch(70% 0.16 45);
-  --accent-deep: oklch(52% 0.15 40);
+  /* Shifted from an orange hue to a blue derived from the logo's own
+     cyan (#01BEFC) -- issue #90's brand reconciliation. A blend, not a
+     full swap: the cream background and warm ink stay as they are, only
+     the interactive accent moves toward the actual brand mark. */
+  --accent: oklch(66% 0.17 235);
+  --accent-deep: oklch(48% 0.16 235);
   --ok: #4e8e76;
   --warn: #c08a2e;
   --error: #b5493c;

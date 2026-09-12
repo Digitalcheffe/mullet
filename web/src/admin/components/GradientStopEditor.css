@@ -1,0 +1,81 @@
+.gradient-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.gradient-preview {
+  width: 100%;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.gradient-angle-field {
+  width: 100%;
+}
+
+.gradient-angle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gradient-angle-row input[type='range'] {
+  flex: 1;
+}
+.gradient-angle-value {
+  flex: 0 0 auto;
+  width: 40px;
+  text-align: right;
+  font: 600 13px var(--font-body);
+  color: var(--ink-soft);
+}
+
+.gradient-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gradient-stop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gradient-stop-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.gradient-stop-position {
+  width: 64px;
+  flex: 0 0 auto;
+}
+
+.gradient-stop-percent {
+  flex: 0 0 auto;
+  color: var(--ink-soft);
+  font: 600 13px var(--font-body);
+}
+
+.gradient-stop-remove {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.gradient-stop-remove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.gradient-add-stop {
+  align-self: flex-start;
+}

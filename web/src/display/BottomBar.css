@@ -13,7 +13,7 @@
   align-items: center;
   gap: 6px;
   font-weight: 700;
-  color: #e67e22;
+  color: var(--mullet-warning);
   opacity: 1;
 }
 
@@ -49,11 +49,11 @@
 }
 
 .bb-status-ok .bb-status-dot {
-  background: #2ecc71;
+  background: var(--mullet-success);
 }
 
 .bb-status-bad .bb-status-dot {
-  background: #e67e22;
+  background: var(--mullet-warning);
 }
 
 .bb-screen-dots {

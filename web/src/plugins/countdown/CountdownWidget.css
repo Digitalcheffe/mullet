@@ -1,0 +1,45 @@
+.countdown-widget {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+  overflow: hidden;
+}
+
+.countdown-number {
+  font-family: var(--mullet-heading-font);
+  font-size: calc(var(--mullet-font-lg) * 1.8);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.countdown-today {
+  font-family: var(--mullet-heading-font);
+  font-size: calc(var(--mullet-font-lg) * 1.2);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.countdown-caption {
+  font-size: var(--mullet-font-sm);
+  opacity: 0.7;
+}
+
+.countdown-label {
+  font-size: var(--mullet-font-sm);
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+.countdown-empty {
+  opacity: 0.6;
+  font-size: var(--mullet-font-sm);
+  font-weight: 600;
+}

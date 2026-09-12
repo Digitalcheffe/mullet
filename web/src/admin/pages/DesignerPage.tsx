@@ -760,6 +760,14 @@ function ConfigFieldInput({
           helpText={field.helpText}
         />
       );
+    case 'date':
+      return (
+        <label className="field" key={fieldKey}>
+          <span className="kicker">{field.label}</span>
+          <input type="date" value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} />
+          {field.helpText && <span className="field-help">{field.helpText}</span>}
+        </label>
+      );
     case 'text':
     default:
       return (

@@ -56,9 +56,16 @@ func TestConfigureEmptyPathRevertsToStdout(t *testing.T) {
 
 func TestConfigureInvalidPathLeavesPreviousDestinationInPlace(t *testing.T) {
 	goodPath := filepath.Join(t.TempDir(), "mullet.log")
-	// A path inside a directory that doesn't exist can never be opened
-	// -- os.OpenFile doesn't create parent directories.
-	badPath := filepath.Join(t.TempDir(), "does-not-exist", "mullet.log")
+	// A path that's actually an existing directory can never be opened
+	// as a log file -- MkdirAll on an already-existing directory is a
+	// harmless no-op, so this still reaches (and fails at) OpenFile,
+	// unlike a merely-missing parent directory (see
+	// TestConfigureCreatesParentDirectory below, which Configure now
+	// handles instead of failing).
+	badPath := filepath.Join(t.TempDir(), "not-a-file")
+	if err := os.Mkdir(badPath, 0o755); err != nil {
+		t.Fatalf("creating directory at badPath: %v", err)
+	}
 	resetToStdout(t)
 
 	if err := Configure(goodPath); err != nil {
@@ -67,11 +74,33 @@ func TestConfigureInvalidPathLeavesPreviousDestinationInPlace(t *testing.T) {
 	writerBefore := log.Writer()
 
 	if err := Configure(badPath); err == nil {
-		t.Fatal("Configure(badPath) = nil error, want one (the parent directory doesn't exist)")
+		t.Fatal("Configure(badPath) = nil error, want one (badPath is a directory, not a file)")
 	}
 
 	if log.Writer() != writerBefore {
 		t.Error("a failed Configure call changed the active log destination -- it should leave the previous one in place")
+	}
+}
+
+// The Docker image's default log path (/data/logs/mullet.log) puts the
+// log in its own subdirectory of the mounted volume, which won't exist
+// on a fresh deployment -- Configure needs to create it rather than
+// fail over to stdout every time.
+func TestConfigureCreatesParentDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "logs", "mullet.log")
+	resetToStdout(t)
+
+	if err := Configure(path); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	log.Print("PARENT_DIR_TEST_MESSAGE")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading log file: %v", err)
+	}
+	if !strings.Contains(string(data), "PARENT_DIR_TEST_MESSAGE") {
+		t.Errorf("log file = %q, want it to contain the logged message", data)
 	}
 }
 

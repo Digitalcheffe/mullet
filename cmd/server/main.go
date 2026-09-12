@@ -51,6 +51,22 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Seed-once-then-admin-wins: a fresh Docker deployment starts with
+	// working outgoing mail and file logging straight from env vars,
+	// but once an admin edits either via Settings, the DB stays the
+	// permanent source of truth -- a later restart/redeploy never
+	// silently reverts their changes. No-op if the corresponding env
+	// var is unset or a config already exists.
+	if err := db.SeedSMTPConfigFromEnv(sqldb, db.SMTPConfig{
+		Host: cfg.SMTP.Host, Port: cfg.SMTP.Port, Username: cfg.SMTP.Username,
+		Password: cfg.SMTP.Password, FromAddress: cfg.SMTP.FromAddress, TLSMode: cfg.SMTP.TLSMode,
+	}); err != nil {
+		log.Printf("seeding smtp config from env: %v", err)
+	}
+	if err := db.SeedLogFilePathFromEnv(sqldb, cfg.LogPath); err != nil {
+		log.Printf("seeding log file path from env: %v", err)
+	}
+
 	// Applies before any other log output, so file logging (if
 	// configured) captures everything from here on -- pre-DB-open
 	// failures above can only ever reach stdout, since the setting

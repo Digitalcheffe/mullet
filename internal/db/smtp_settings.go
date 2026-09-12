@@ -110,3 +110,23 @@ func SaveSMTPConfig(sqldb *sql.DB, cfg SMTPConfig) error {
 	}
 	return SetSetting(sqldb, smtpConfigSettingKey, string(data))
 }
+
+// SeedSMTPConfigFromEnv saves cfg as the server's SMTP configuration only
+// if none has ever been saved -- lets a fresh Docker deployment start
+// with working outgoing mail straight from docker-compose env vars,
+// while leaving an admin's later edits via Settings as the permanent
+// source of truth from then on (a redeploy never silently reverts
+// them). No-op if cfg.Host is empty (nothing to seed).
+func SeedSMTPConfigFromEnv(sqldb *sql.DB, cfg SMTPConfig) error {
+	if cfg.Host == "" {
+		return nil
+	}
+	_, found, err := GetSMTPConfig(sqldb)
+	if err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	return SaveSMTPConfig(sqldb, cfg)
+}

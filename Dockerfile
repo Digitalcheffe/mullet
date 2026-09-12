@@ -27,9 +27,16 @@ WORKDIR /app
 COPY --from=go-builder /out/server ./server
 COPY --from=web-builder /src/web/dist ./web/dist
 
+# Everything under /data is the single mounted volume -- the database,
+# uploaded files (theme backgrounds, etc.), and now the log file all
+# live under it by default, so a `docker-compose pull && up -d` (or any
+# redeploy that recreates the container) never loses any of them. Only
+# PORT and the SMTP_* vars are meaningfully overridden per-deployment in
+# practice; see docker-compose.yml for the full list with explanations.
 ENV PORT=8080
 ENV DB_PATH=/data/mullet.db
 ENV UPLOADS_DIR=/data/uploads
+ENV LOG_PATH=/data/logs/mullet.log
 ENV STATIC_DIR=/app/web/dist
 
 EXPOSE 8080

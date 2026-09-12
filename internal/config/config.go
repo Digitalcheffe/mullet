@@ -3,8 +3,23 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"strings"
 )
+
+// SMTPEnvConfig is outgoing-mail configuration read from the environment,
+// for seeding db.SMTPConfig on first boot (see db.SeedSMTPConfigFromEnv)
+// -- a fresh Docker deployment can have working password-reset/
+// notification email without an admin visiting Settings first. Host
+// empty means "nothing to seed."
+type SMTPEnvConfig struct {
+	Host        string
+	Port        int
+	Username    string
+	Password    string
+	FromAddress string
+	TLSMode     string
+}
 
 // Config holds server-wide settings read at startup.
 type Config struct {
@@ -14,6 +29,12 @@ type Config struct {
 	CORSOrigins  []string
 	StaticDir    string
 	AuthDisabled bool
+	// LogPath seeds the log file destination setting on first boot (see
+	// db.SeedLogFilePathFromEnv) -- empty means "nothing to seed," not
+	// "stdout only" (that's the DB setting's own empty-string meaning,
+	// once something has actually seeded or saved it).
+	LogPath string
+	SMTP    SMTPEnvConfig
 }
 
 // Load reads configuration from environment variables, applying defaults
@@ -30,6 +51,19 @@ func Load() Config {
 		CORSOrigins:  getEnvList("CORS_ORIGINS"),
 		StaticDir:    getEnv("STATIC_DIR", "./web/dist"),
 		AuthDisabled: getEnvBool("AUTH_DISABLED"),
+		// No Go-level default (unlike DB_PATH/UPLOADS_DIR above) --
+		// leaving this unset must keep today's stdout-only default for
+		// every existing deployment; only the Docker image itself
+		// opts into a default file path under /data (see Dockerfile).
+		LogPath: getEnv("LOG_PATH", ""),
+		SMTP: SMTPEnvConfig{
+			Host:        getEnv("SMTP_HOST", ""),
+			Port:        getEnvInt("SMTP_PORT", 587),
+			Username:    getEnv("SMTP_USERNAME", ""),
+			Password:    getEnv("SMTP_PASSWORD", ""),
+			FromAddress: getEnv("SMTP_FROM_ADDRESS", ""),
+			TLSMode:     getEnv("SMTP_TLS_MODE", "starttls"),
+		},
 	}
 }
 
@@ -38,6 +72,21 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getEnvInt parses key as an integer, falling back on unset or
+// unparseable input rather than failing startup over a typo'd port
+// number.
+func getEnvInt(key string, fallback int) int {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return v
 }
 
 // getEnvBool reports whether key is set to a truthy value ("1", "true",

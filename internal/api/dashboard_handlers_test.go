@@ -269,8 +269,16 @@ func TestPutSettingsSavesLogFilePathAndAppliesIt(t *testing.T) {
 
 func TestPutSettingsRejectsUnwritableLogFilePath(t *testing.T) {
 	router, _ := newTestRouter(t, nil)
-	// A path inside a directory that doesn't exist can never be opened.
-	badPath := filepath.Join(t.TempDir(), "does-not-exist", "mullet.log")
+	// A path that's actually an existing directory can never be opened
+	// as a log file -- logging.Configure creates a merely-missing
+	// parent directory rather than rejecting it, so that alone no
+	// longer exercises this rejection path (see logging_test.go's
+	// TestConfigureCreatesParentDirectory).
+	tmp := t.TempDir()
+	badPath := filepath.Join(tmp, "not-a-file")
+	if err := os.Mkdir(badPath, 0o755); err != nil {
+		t.Fatalf("creating directory at badPath: %v", err)
+	}
 	resetLoggingToStdout(t)
 
 	body, _ := json.Marshal(updateSettingsRequest{ServerName: "Mullet", LogFilePath: badPath})

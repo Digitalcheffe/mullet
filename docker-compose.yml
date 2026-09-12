@@ -2,20 +2,39 @@ services:
   mullet:
     build: .
     image: mullet:latest
+    # A single PORT variable (set it in the shell or a .env file next to
+    # this file, e.g. `PORT=9000 docker-compose up`) drives both sides
+    # of the mapping and the container's own listen port together --
+    # keep them referencing the same ${PORT:-8080} rather than hardcoding
+    # the container side, or the app would end up listening somewhere
+    # the host mapping doesn't actually point at.
     ports:
-      - "${PORT:-8080}:8080"
+      - "${PORT:-8080}:${PORT:-8080}"
     volumes:
       - ./data:/data
     environment:
-      - PORT=8080
+      - PORT=${PORT:-8080}
       - DB_PATH=/data/mullet.db
       # Admin-uploaded files (e.g. a theme's background image, issue
-      # #58) -- deliberately under the same ./data volume as the
-      # database above rather than a second volume, so an uploaded
-      # image survives `docker-compose pull && up -d` the same way the
-      # database does. No need to change this unless you're relocating
-      # ./data itself.
+      # #58) and the log file below -- deliberately under the same
+      # ./data volume as the database rather than a second volume, so
+      # they all survive `docker-compose pull && up -d` the same way
+      # the database does. No need to change these unless you're
+      # relocating ./data itself.
       - UPLOADS_DIR=/data/uploads
+      - LOG_PATH=/data/logs/mullet.log
+      # Outgoing mail (password reset, notification emails -- issue
+      # #78/#112). Seeds the server's SMTP setting on first boot only;
+      # once an admin edits it via Settings, that takes over as the
+      # permanent source of truth and these are ignored on later
+      # restarts. Leave SMTP_HOST empty to skip seeding entirely and
+      # configure it via Settings instead.
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_ADDRESS=${SMTP_FROM_ADDRESS:-}
+      - SMTP_TLS_MODE=${SMTP_TLS_MODE:-starttls}
       # Secrets for plugins that reference ${VAR} in their setup fields
       - OWM_API_KEY=${OWM_API_KEY:-}
       - HA_TOKEN=${HA_TOKEN:-}

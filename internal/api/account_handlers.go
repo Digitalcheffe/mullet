@@ -82,7 +82,12 @@ func handleUpdateAccountPassword(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 		if err := auth.VerifyPassword(user.PasswordHash, req.CurrentPassword); err != nil {
-			http.Error(w, "current password is incorrect", http.StatusUnauthorized)
+			// 403, not 401: the bearer token itself is valid (claimsFromContext
+			// already succeeded) -- this is an authenticated request failing an
+			// additional business-rule check, not an authentication failure.
+			// useApiFetch force-logs-out on any 401, which would otherwise turn
+			// a simple mistyped password into a surprise full session logout.
+			http.Error(w, "current password is incorrect", http.StatusForbidden)
 			return
 		}
 

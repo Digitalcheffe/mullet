@@ -19,26 +19,31 @@ var ErrUsernameTaken = errors.New("username already taken")
 // left to the caller to check first.
 var ErrLastAdmin = errors.New("cannot remove the last admin account")
 
-// User is an admin account. login and setup (internal/api/admin_handlers.go)
-// still read/write the users table with raw SQL directly, since both
-// predate this file and only need a password hash lookup / one-time
-// insert -- not worth churning working code to route through here too.
+// User is an admin account. setup (internal/api/admin_handlers.go) still
+// inserts into the users table with raw SQL directly, since it predates
+// this file and only needs a one-time insert -- not worth churning
+// working code to route through here too. Login does go through
+// GetUserByUsername, since it needs TOTPEnabled to decide whether a
+// second factor is required (issue #114).
 type User struct {
 	ID           int
 	Username     string
 	PasswordHash string
 	Email        *string
 	Role         string
+	TOTPEnabled  bool
 	CreatedAt    time.Time
 }
 
-const userColumns = `id, username, password_hash, email, role, created_at`
+const userColumns = `id, username, password_hash, email, role, totp_enabled, created_at`
 
 func scanUser(row interface{ Scan(...any) error }) (User, error) {
 	var u User
-	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Email, &u.Role, &u.CreatedAt); err != nil {
+	var totpEnabled int
+	if err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Email, &u.Role, &totpEnabled, &u.CreatedAt); err != nil {
 		return User{}, err
 	}
+	u.TOTPEnabled = totpEnabled != 0
 	return u, nil
 }
 

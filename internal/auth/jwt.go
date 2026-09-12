@@ -16,10 +16,21 @@ var ErrInvalidToken = errors.New("invalid or expired token")
 
 const tokenTTL = 24 * time.Hour
 
-// Claims is the JWT payload for an authenticated admin session.
+// pendingMFATokenTTL is deliberately short -- this token exists only to
+// carry a verified username+password from login to the MFA-verify step
+// a moment later, not to be a standing credential of its own.
+const pendingMFATokenTTL = 5 * time.Minute
+
+// Claims is the JWT payload for an authenticated admin session, or for
+// the short-lived intermediate token issued between password
+// verification and TOTP verification when a second factor is enabled
+// (issue #114) -- Pending is true only for that second case. requireAuth
+// rejects a Pending token outright: it grants no access to any ordinary
+// /api/admin/* route, only to POST /api/admin/mfa/verify.
 type Claims struct {
 	UserID   int    `json:"uid"`
 	Username string `json:"username"`
+	Pending  bool   `json:"pending,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -32,6 +43,24 @@ func IssueToken(secret []byte, userID int, username string) (string, error) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(tokenTTL)),
+		},
+	}
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)
+}
+
+// IssuePendingMFAToken returns a short-lived signed JWT proving password
+// verification succeeded for userID, without yet granting a session --
+// exchange it for a real one via a valid TOTP or backup code at
+// POST /api/admin/mfa/verify.
+func IssuePendingMFAToken(secret []byte, userID int, username string) (string, error) {
+	now := time.Now()
+	claims := Claims{
+		UserID:   userID,
+		Username: username,
+		Pending:  true,
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(pendingMFATokenTTL)),
 		},
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(secret)

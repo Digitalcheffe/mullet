@@ -97,6 +97,13 @@ func requireAuth(secret []byte, authDisabled bool) func(http.Handler) http.Handl
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
+			// A pending-MFA token (issue #114) proves password
+			// verification, not a completed login -- it's only valid at
+			// POST /api/admin/mfa/verify, never here.
+			if claims.Pending {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
 
 			ctx := context.WithValue(r.Context(), claimsContextKey, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))

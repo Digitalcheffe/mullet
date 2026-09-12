@@ -11,6 +11,7 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const [disableMFA, setDisableMFA] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -30,7 +31,7 @@ export default function ResetPasswordPage() {
       const res = await fetch('/api/admin/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, new_password: newPassword }),
+        body: JSON.stringify({ token, new_password: newPassword, disable_mfa: disableMFA }),
       });
       if (res.ok) {
         setDone(true);
@@ -91,6 +92,15 @@ export default function ResetPasswordPage() {
             minLength={8}
           />
         </label>
+        <label className="toggle-row">
+          <span>Also disable two-factor authentication</span>
+          <input type="checkbox" checked={disableMFA} onChange={(e) => setDisableMFA(e.target.checked)} />
+        </label>
+        <p className="field-help">
+          Only check this if you've lost access to your authenticator app and backup codes -- it
+          removes the second factor from this account entirely. If two-factor authentication isn't
+          enabled, this has no effect.
+        </p>
         <button type="submit" className="btn-primary" disabled={submitting}>
           {submitting ? 'Resetting…' : 'Reset password'}
         </button>

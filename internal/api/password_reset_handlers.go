@@ -102,6 +102,14 @@ func handleForgotPassword(sqldb *sql.DB) http.HandlerFunc {
 type resetPasswordRequest struct {
 	Token       string `json:"token"`
 	NewPassword string `json:"new_password"`
+	// DisableMFA additionally turns off TOTP (issue #114) for the
+	// account being reset. Verified email ownership is treated as
+	// sufficient proof of identity for this, the same as it already is
+	// for the password itself -- otherwise a lost authenticator device
+	// would leave an admin locked out even after successfully resetting
+	// their password. Harmless to set on an account that never had TOTP
+	// enabled in the first place.
+	DisableMFA bool `json:"disable_mfa"`
 }
 
 // handleResetPassword completes a reset: redeems token (single-use,
@@ -138,6 +146,13 @@ func handleResetPassword(sqldb *sql.DB) http.HandlerFunc {
 		if err := db.SetUserPasswordHash(sqldb, userID, hash); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
+		}
+
+		if req.DisableMFA {
+			if err := db.DisableTOTP(sqldb, userID); err != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
 		}
 
 		if user, err := db.GetUser(sqldb, userID); err != nil {

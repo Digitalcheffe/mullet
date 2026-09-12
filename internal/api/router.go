@@ -53,10 +53,20 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	mux.HandleFunc("POST /api/admin/forgot-password", handleForgotPassword(sqldb))
 	mux.HandleFunc("POST /api/admin/reset-password", handleResetPassword(sqldb))
 
+	// Two-factor login, step two (issue #114) -- public for the same
+	// reason as login itself: the caller only has the pending token
+	// handleLogin issued, not a real session yet.
+	mux.HandleFunc("POST /api/admin/mfa/verify", handleMFAVerify(sqldb, jwtSecret))
+
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("GET /api/admin/me", handleWhoAmI(sqldb))
 	adminMux.HandleFunc("PUT /api/admin/account/email", handleUpdateAccountEmail(sqldb))
 	adminMux.HandleFunc("PUT /api/admin/account/password", handleUpdateAccountPassword(sqldb))
+	adminMux.HandleFunc("GET /api/admin/account/totp", handleGetTOTPStatus(sqldb))
+	adminMux.HandleFunc("POST /api/admin/account/totp/enroll", handleEnrollTOTP(sqldb))
+	adminMux.HandleFunc("POST /api/admin/account/totp/confirm", handleConfirmTOTP(sqldb))
+	adminMux.HandleFunc("DELETE /api/admin/account/totp", handleDisableTOTP(sqldb))
+	adminMux.HandleFunc("POST /api/admin/account/totp/backup-codes", handleRegenerateBackupCodes(sqldb))
 	adminMux.HandleFunc("GET /api/admin/users", handleListUsers(sqldb))
 	adminMux.HandleFunc("POST /api/admin/users", handleCreateUser(sqldb))
 	adminMux.HandleFunc("DELETE /api/admin/users/{id}", handleDeleteUser(sqldb))

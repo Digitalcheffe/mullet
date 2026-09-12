@@ -97,8 +97,11 @@ func TestUpdateAccountPasswordRejectsWrongCurrentPassword(t *testing.T) {
 	body, _ := json.Marshal(updateAccountPasswordRequest{CurrentPassword: "wrong-password", NewPassword: "newpassword1"})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/account/password", body))
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("status = %d, want 401 (body: %s)", rec.Code, rec.Body.String())
+	// 403, not 401 -- the session itself is valid; useApiFetch on the
+	// frontend force-logs-out on any 401, which a mistyped current
+	// password shouldn't trigger.
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403 (body: %s)", rec.Code, rec.Body.String())
 	}
 }
 

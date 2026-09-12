@@ -33,6 +33,9 @@ interface Card {
   screen_id: number;
   ui_plugin_id: string;
   data_plugin_instance_id?: number;
+  // Present only for a multi-source card (issue #97) -- see
+  // UIPlugin.supportsMultiDataSource.
+  data_plugin_instance_ids?: number[];
   x: number;
   y: number;
   w: number;
@@ -108,8 +111,9 @@ function gridlineBackground(cols: number, rowHeight: number, gap: number): strin
 }
 
 function dataSourceLabel(card: Card, instances: PluginInstance[]): string {
-  if (card.data_plugin_instance_id == null) return 'No data source';
-  return instances.find((i) => i.id === card.data_plugin_instance_id)?.instance_name ?? 'Unknown source';
+  const ids = card.data_plugin_instance_ids?.length ? card.data_plugin_instance_ids : card.data_plugin_instance_id != null ? [card.data_plugin_instance_id] : [];
+  if (ids.length === 0) return 'No data source';
+  return ids.map((id) => instances.find((i) => i.id === id)?.instance_name ?? 'Unknown source').join(', ');
 }
 
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
@@ -382,7 +386,12 @@ export default function DesignerPage() {
 
   async function handleSaveCardSettings(
     card: Card,
-    values: { data_plugin_instance_id: number | null; config: unknown; theme_override: Partial<ThemeTokens> | null },
+    values: {
+      data_plugin_instance_id: number | null;
+      data_plugin_instance_ids?: number[];
+      config: unknown;
+      theme_override: Partial<ThemeTokens> | null;
+    },
   ) {
     await withSaveStatus(async () => {
       const res = await apiFetch(`/api/admin/cards/${card.id}`, {
@@ -391,6 +400,12 @@ export default function DesignerPage() {
         body: JSON.stringify({
           ui_plugin_id: card.ui_plugin_id,
           data_plugin_instance_id: values.data_plugin_instance_id,
+          // Omitted (not just empty) for a single-source widget -- the
+          // backend leaves card_data_sources untouched when this key is
+          // absent, only replacing it when a multi-source widget
+          // explicitly sends the full set (see cardRequest's doc
+          // comment in internal/api/display_handlers.go).
+          ...(values.data_plugin_instance_ids ? { data_plugin_instance_ids: values.data_plugin_instance_ids } : {}),
           x: card.x,
           y: card.y,
           w: card.w,
@@ -651,7 +666,12 @@ interface CardSettingsPanelProps {
   uiPlugin: ReturnType<typeof getUIPlugin>;
   instances: PluginInstance[];
   manifests: PluginManifest[];
-  onSave: (values: { data_plugin_instance_id: number | null; config: unknown; theme_override: Partial<ThemeTokens> | null }) => Promise<void>;
+  onSave: (values: {
+    data_plugin_instance_id: number | null;
+    data_plugin_instance_ids?: number[];
+    config: unknown;
+    theme_override: Partial<ThemeTokens> | null;
+  }) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -781,7 +801,11 @@ function ConfigFieldInput({
 }
 
 function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCancel }: CardSettingsPanelProps) {
+  const supportsMulti = uiPlugin?.supportsMultiDataSource === true;
   const [dataPluginInstanceId, setDataPluginInstanceId] = useState<number | null>(card.data_plugin_instance_id ?? null);
+  const [dataPluginInstanceIds, setDataPluginInstanceIds] = useState<number[]>(
+    () => card.data_plugin_instance_ids ?? (card.data_plugin_instance_id != null ? [card.data_plugin_instance_id] : []),
+  );
   const configSchema = useMemo(() => uiPlugin?.configSchema ?? {}, [uiPlugin]);
   const [configValues, setConfigValues] = useState<Record<string, unknown>>(() => {
     const initial: Record<string, unknown> = {};
@@ -807,11 +831,20 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
     setError(null);
     setSubmitting(true);
     try {
-      await onSave({
-        data_plugin_instance_id: dataPluginInstanceId,
-        config: configValues,
-        theme_override: overrideEnabled ? themeOverride : null,
-      });
+      await onSave(
+        supportsMulti
+          ? {
+              data_plugin_instance_id: dataPluginInstanceIds[0] ?? null,
+              data_plugin_instance_ids: dataPluginInstanceIds,
+              config: configValues,
+              theme_override: overrideEnabled ? themeOverride : null,
+            }
+          : {
+              data_plugin_instance_id: dataPluginInstanceId,
+              config: configValues,
+              theme_override: overrideEnabled ? themeOverride : null,
+            },
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
     } finally {
@@ -830,20 +863,37 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
 
       {uiPlugin?.dataShape ? (
         <label className="field">
-          <span className="kicker">Data source</span>
-          <select
-            value={dataPluginInstanceId ?? ''}
-            onChange={(e) => setDataPluginInstanceId(e.target.value === '' ? null : Number(e.target.value))}
-          >
-            <option value="">None</option>
-            {compatibleInstances.map((inst) => (
-              <option key={inst.id} value={inst.id}>
-                {inst.instance_name}
-              </option>
-            ))}
-          </select>
+          <span className="kicker">{supportsMulti ? 'Data sources' : 'Data source'}</span>
+          {supportsMulti ? (
+            <select
+              multiple
+              value={dataPluginInstanceIds.map(String)}
+              onChange={(e) => setDataPluginInstanceIds(Array.from(e.target.selectedOptions).map((o) => Number(o.value)))}
+            >
+              {compatibleInstances.map((inst) => (
+                <option key={inst.id} value={inst.id}>
+                  {inst.instance_name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <select
+              value={dataPluginInstanceId ?? ''}
+              onChange={(e) => setDataPluginInstanceId(e.target.value === '' ? null : Number(e.target.value))}
+            >
+              <option value="">None</option>
+              {compatibleInstances.map((inst) => (
+                <option key={inst.id} value={inst.id}>
+                  {inst.instance_name}
+                </option>
+              ))}
+            </select>
+          )}
           {compatibleInstances.length === 0 && (
             <span className="field-help">No configured plugin instance produces {uiPlugin.dataShape} data yet.</span>
+          )}
+          {supportsMulti && compatibleInstances.length > 0 && (
+            <span className="field-help">Merges events from every selected source onto this one card. Ctrl/Cmd-click to select more than one.</span>
           )}
         </label>
       ) : (

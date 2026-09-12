@@ -173,6 +173,9 @@ export const calendarAgendaPlugin: UIPlugin<EventRow> = {
   defaultSize: { w: 6, h: 8 },
   minSize: { w: 3, h: 4 },
   maxSize: { w: 10, h: 16 },
+  // Issue #97: merge Family + Birthdays + Holidays (etc.) onto one card
+  // instead of being limited to a single calendar source.
+  supportsMultiDataSource: true,
   configSchema: {
     days: { type: 'number', label: 'Days to show', default: 5 },
     showLocation: { type: 'toggle', label: 'Show location', default: true },

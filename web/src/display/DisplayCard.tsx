@@ -46,7 +46,11 @@ function PluginBody({
   card: CardLayout;
   theme: ThemeTokens;
 }) {
-  const data = useShapeData(plugin.dataShape, card.data_plugin_instance_id);
+  const pluginInstanceId =
+    card.data_plugin_instance_ids && card.data_plugin_instance_ids.length > 0
+      ? card.data_plugin_instance_ids
+      : card.data_plugin_instance_id;
+  const data = useShapeData(plugin.dataShape, pluginInstanceId);
   const Component = plugin.component;
   return (
     <Component
@@ -54,7 +58,7 @@ function PluginBody({
       config={card.config}
       size={{ w: card.w, h: card.h }}
       theme={theme}
-      pluginInstanceId={card.data_plugin_instance_id}
+      pluginInstanceId={pluginInstanceId}
     />
   );
 }

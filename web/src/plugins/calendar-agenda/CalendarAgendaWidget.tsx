@@ -1,6 +1,7 @@
 import type { UIPlugin, WidgetProps } from '../../shared/types/plugin';
 import { cardStyle } from '../shared/cardStyle';
 import { colorForID } from '../shared/idColor';
+import { parseSQLDateTime } from '../shared/sqlDateTime';
 import { useShapeData } from '../../display/useShapeData';
 import './CalendarAgendaWidget.css';
 
@@ -35,16 +36,10 @@ interface Config {
   showLocation?: boolean;
 }
 
-function parseSQLDateTime(raw: string): Date {
-  // "YYYY-MM-DD HH:MM:SS" (UTC, per internal/db/data_api.go's
-  // normalizeSQLValue) -- not directly Date-parseable without a "T" and
-  // zone, so this makes it one. The resulting Date is a real instant;
-  // grouping it into a calendar *day* still has to go through the
-  // viewer's local timezone (localDayKey below), not UTC's, since a
-  // kiosk display's "today" means the viewer's wall-clock today.
-  return new Date(raw.replace(' ', 'T') + 'Z');
-}
-
+// parseSQLDateTime's result is a real instant; grouping it into a
+// calendar *day* still has to go through the viewer's local timezone,
+// not UTC's, since a kiosk display's "today" means the viewer's
+// wall-clock today.
 function localDayKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }

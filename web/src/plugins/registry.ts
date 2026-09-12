@@ -17,6 +17,7 @@ import { serverHealthPlugin } from './server-health/ServerHealthWidget';
 import { mediaNowPlayingPlugin } from './media-now-playing/MediaNowPlayingWidget';
 import { packageTrackerPlugin } from './package-tracker/PackageTrackerWidget';
 import { notesPlugin } from './notes/NotesWidget';
+import { birthdaysPlugin } from './birthdays/BirthdaysWidget';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const uiPlugins: UIPlugin<any>[] = [
@@ -31,6 +32,7 @@ export const uiPlugins: UIPlugin<any>[] = [
   mediaNowPlayingPlugin,
   packageTrackerPlugin,
   notesPlugin,
+  birthdaysPlugin,
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

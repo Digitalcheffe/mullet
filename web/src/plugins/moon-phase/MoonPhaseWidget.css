@@ -1,0 +1,22 @@
+.moon-phase-widget {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.moon-phase-icon {
+  width: 45%;
+  max-width: 96px;
+}
+
+.moon-phase-name {
+  font-size: var(--mullet-font-sm);
+  font-weight: 700;
+}

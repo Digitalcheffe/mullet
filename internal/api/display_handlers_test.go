@@ -306,6 +306,60 @@ func TestScreenCRUDEndpoints(t *testing.T) {
 	}
 }
 
+// TestScreenThemeOverrideRoundTrip covers issue #87's screen-level font
+// override, mirroring cards.theme_override's own nullable-JSON-object
+// semantics (see parseOptionalJSONObject): set on create, present on
+// fetch, and cleared by an update that omits it -- there's no
+// partial-update path, so an update always fully overwrites.
+func TestScreenThemeOverrideRoundTrip(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	displayID := createTestDisplay(t, router)
+
+	body, _ := json.Marshal(screenRequest{Name: "Main", ThemeOverride: json.RawMessage(`{"fontFamily":"'Poppins', sans-serif"}`)})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays/"+strconv.Itoa(displayID)+"/screens", body))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var created screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &created)
+	if string(created.ThemeOverride) != `{"fontFamily":"'Poppins', sans-serif"}` {
+		t.Errorf("created.ThemeOverride = %s, want the fontFamily object", created.ThemeOverride)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodGet, "/api/admin/screens/"+strconv.Itoa(created.ID), nil))
+	var fetched screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &fetched)
+	if string(fetched.ThemeOverride) != `{"fontFamily":"'Poppins', sans-serif"}` {
+		t.Errorf("fetched.ThemeOverride = %s, want it to persist", fetched.ThemeOverride)
+	}
+
+	updateBody, _ := json.Marshal(screenRequest{Name: "Main", Position: 0})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/screens/"+strconv.Itoa(created.ID), updateBody))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var updated screenResponse
+	json.Unmarshal(rec.Body.Bytes(), &updated)
+	if len(updated.ThemeOverride) != 0 {
+		t.Errorf("updated.ThemeOverride = %s, want cleared (update has no partial-update path)", updated.ThemeOverride)
+	}
+}
+
+func TestCreateScreenThemeOverrideRejectsNonObject(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	displayID := createTestDisplay(t, router)
+
+	body, _ := json.Marshal(screenRequest{Name: "Main", ThemeOverride: json.RawMessage(`"not an object"`)})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPost, "/api/admin/displays/"+strconv.Itoa(displayID)+"/screens", body))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
 func TestCreateScreenNegativeGapDefaults(t *testing.T) {
 	router, _ := newTestRouter(t, nil)
 	displayID := createTestDisplay(t, router)

@@ -21,6 +21,10 @@ export interface ScreenLayout {
   row_height: number;
   gap: number;
   cards: CardLayout[];
+  // A screen-level font override (issue #87), mirroring a card's own
+  // theme_override -- merged over the display's theme in ScreenGrid,
+  // same shallow-spread pattern DisplayCard already uses for cards.
+  theme_override?: Partial<ThemeTokens>;
 }
 
 export interface DisplayLayout {

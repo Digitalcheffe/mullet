@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useApiFetch } from '../auth/useApiFetch';
 import ThemeTokenFields from '../components/ThemeTokenFields';
 import { backgroundCSS, defaultTheme, type ThemeTokens } from '../../shared/themes/tokens';
+import { ensureFontLoaded } from '../../shared/themes/fontOptions';
 import { cardStyle } from '../../plugins/shared/cardStyle';
 import { themePresets } from '../../shared/themes/presets';
 import { validateThemeTokens } from '../../shared/themes/validateTokens';
@@ -87,6 +88,15 @@ export default function ThemeEditorPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+
+  // Loads whichever curated Google Font the editor's own fields
+  // currently resolve to, so the Live Preview actually renders in it
+  // rather than falling back to a system font just because index.html
+  // doesn't happen to load every curated option up front (issue #87).
+  useEffect(() => {
+    ensureFontLoaded(tokens.fontFamily);
+    ensureFontLoaded(tokens.headingFontFamily);
+  }, [tokens.fontFamily, tokens.headingFontFamily]);
 
   async function uploadImage(file: File): Promise<string> {
     const formData = new FormData();

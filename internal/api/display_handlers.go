@@ -404,31 +404,37 @@ const (
 )
 
 type screenRequest struct {
-	Name       string `json:"name"`
-	Position   int    `json:"position"`
-	Columns    int    `json:"columns"`
-	RowHeight  int    `json:"row_height"`
-	Gap        int    `json:"gap"`
-	LayoutMode string `json:"layout_mode"`
+	Name          string          `json:"name"`
+	Position      int             `json:"position"`
+	Columns       int             `json:"columns"`
+	RowHeight     int             `json:"row_height"`
+	Gap           int             `json:"gap"`
+	LayoutMode    string          `json:"layout_mode"`
+	ThemeOverride json.RawMessage `json:"theme_override"`
 }
 
 type screenResponse struct {
-	ID         int    `json:"id"`
-	DisplayID  int    `json:"display_id"`
-	Name       string `json:"name"`
-	Position   int    `json:"position"`
-	Columns    int    `json:"columns"`
-	RowHeight  int    `json:"row_height"`
-	Gap        int    `json:"gap"`
-	LayoutMode string `json:"layout_mode"`
+	ID            int             `json:"id"`
+	DisplayID     int             `json:"display_id"`
+	Name          string          `json:"name"`
+	Position      int             `json:"position"`
+	Columns       int             `json:"columns"`
+	RowHeight     int             `json:"row_height"`
+	Gap           int             `json:"gap"`
+	LayoutMode    string          `json:"layout_mode"`
+	ThemeOverride json.RawMessage `json:"theme_override,omitempty"`
 }
 
 func toScreenResponse(s db.Screen) screenResponse {
-	return screenResponse{
+	resp := screenResponse{
 		ID: s.ID, DisplayID: s.DisplayID, Name: s.Name,
 		Position: s.Position, Columns: s.Columns, RowHeight: s.RowHeight, Gap: s.Gap,
 		LayoutMode: s.LayoutMode,
 	}
+	if s.ThemeOverride != nil {
+		resp.ThemeOverride = json.RawMessage(*s.ThemeOverride)
+	}
+	return resp
 }
 
 // normalizeLayoutMode validates a request's layout_mode, defaulting an
@@ -549,8 +555,13 @@ func handleCreateScreen(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 		columns, rowHeight, gap := screenDefaults(req, layoutMode, true)
+		themeOverride, err := parseOptionalJSONObject(req.ThemeOverride)
+		if err != nil {
+			http.Error(w, "theme_override "+err.Error(), http.StatusBadRequest)
+			return
+		}
 
-		id, err := db.CreateScreen(sqldb, displayID, req.Name, req.Position, columns, rowHeight, gap, layoutMode)
+		id, err := db.CreateScreen(sqldb, displayID, req.Name, req.Position, columns, rowHeight, gap, layoutMode, themeOverride)
 		switch {
 		case errors.Is(err, db.ErrInUse):
 			http.Error(w, "display not found", http.StatusBadRequest)
@@ -586,8 +597,13 @@ func handleUpdateScreen(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 		columns, rowHeight, gap := screenDefaults(req, layoutMode, false)
+		themeOverride, err := parseOptionalJSONObject(req.ThemeOverride)
+		if err != nil {
+			http.Error(w, "theme_override "+err.Error(), http.StatusBadRequest)
+			return
+		}
 
-		if err := db.UpdateScreen(sqldb, id, req.Name, req.Position, columns, rowHeight, gap, layoutMode); errors.Is(err, db.ErrNotFound) {
+		if err := db.UpdateScreen(sqldb, id, req.Name, req.Position, columns, rowHeight, gap, layoutMode, themeOverride); errors.Is(err, db.ErrNotFound) {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		} else if err != nil {

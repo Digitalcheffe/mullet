@@ -10,7 +10,7 @@ export interface GridSize {
 }
 
 export interface ConfigField {
-  type: 'text' | 'number' | 'select' | 'multi-select' | 'toggle' | 'color';
+  type: 'text' | 'textarea' | 'number' | 'select' | 'multi-select' | 'toggle' | 'color';
   label: string;
   default?: unknown;
   options?: { value: string; label: string }[];

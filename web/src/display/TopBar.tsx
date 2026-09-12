@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ThemeTokens } from '../shared/themes/tokens';
-import { conditionGlyph } from '../plugins/shared/conditionIcons';
+import { ConditionIcon, isNightTime } from '../plugins/shared/conditionIcons';
 import { useShapeData } from './useShapeData';
 import './TopBar.css';
 
@@ -44,7 +44,12 @@ export default function TopBar({ displayName, theme }: Props) {
       </div>
       {weather && (
         <div className="tb-weather" style={{ color: theme.accentColor }}>
-          <span>{conditionGlyph(String(weather.condition ?? ''))}</span>
+          <ConditionIcon
+            condition={String(weather.condition ?? '')}
+            isNight={isNightTime(weather.sunrise as string | null, weather.sunset as string | null)}
+            width="1em"
+            height="1em"
+          />
           <span>{Math.round(Number(weather.temp))}°</span>
         </div>
       )}

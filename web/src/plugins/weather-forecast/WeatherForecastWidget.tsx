@@ -1,6 +1,6 @@
 import type { UIPlugin, WidgetProps } from '../../shared/types/plugin';
 import { cardStyle } from '../shared/cardStyle';
-import { conditionGlyph } from '../shared/conditionIcons';
+import { ConditionIcon } from '../shared/conditionIcons';
 import './WeatherForecastWidget.css';
 
 // One row from GET /api/data/weather_forecast -- field names match the
@@ -58,7 +58,9 @@ function WeatherForecastComponent({ data, config, size, theme }: WidgetProps<Wea
       {days.map((d) => (
         <div className="wf-day" key={d.id}>
           <div className="wf-label">{dayLabel(d.date)}</div>
-          <div className="wf-glyph">{conditionGlyph(d.condition)}</div>
+          <div className="wf-glyph" style={{ color: theme.accentColor }}>
+            <ConditionIcon condition={d.condition} width="1em" height="1em" />
+          </div>
           <div className="wf-hi-lo">
             <span className="wf-high" style={{ color: theme.accentColor }}>
               {round(d.high)}

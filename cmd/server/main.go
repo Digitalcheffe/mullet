@@ -20,6 +20,7 @@ import (
 	"github.com/Digitalcheffe/mullet/internal/auth"
 	"github.com/Digitalcheffe/mullet/internal/config"
 	"github.com/Digitalcheffe/mullet/internal/db"
+	"github.com/Digitalcheffe/mullet/internal/logging"
 	plugindata "github.com/Digitalcheffe/mullet/internal/plugins/data"
 
 	// Compiled-in data plugins register themselves via init(). Adding a
@@ -48,6 +49,18 @@ func main() {
 
 	if err := db.Migrate(sqldb); err != nil {
 		log.Fatal(err)
+	}
+
+	// Applies before any other log output, so file logging (if
+	// configured) captures everything from here on -- pre-DB-open
+	// failures above can only ever reach stdout, since the setting
+	// itself lives in the database.
+	if logPath, err := db.GetLogFilePath(sqldb); err != nil {
+		log.Printf("loading log file path setting: %v", err)
+	} else if logPath != "" {
+		if err := logging.Configure(logPath); err != nil {
+			log.Printf("configuring log file %q: %v -- falling back to stdout only", logPath, err)
+		}
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

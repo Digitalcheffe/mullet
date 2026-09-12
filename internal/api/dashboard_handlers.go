@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Digitalcheffe/mullet/internal/db"
+	"github.com/Digitalcheffe/mullet/internal/logging"
 )
 
 type pluginStatusResponse struct {
@@ -145,11 +146,13 @@ type settingsResponse struct {
 	ServerName string `json:"server_name"`
 	Port       string `json:"port"`
 	DBPath     string `json:"db_path"`
+	// LogFilePath is "" when logging to stdout only (issue #113).
+	LogFilePath string `json:"log_file_path"`
 }
 
 // handleGetSettings returns the current system settings: the editable
-// server name plus read-only bootstrap info (port, DB path) that can only
-// change via env vars and a restart.
+// server name and log file path, plus read-only bootstrap info (port,
+// DB path) that can only change via env vars and a restart.
 func handleGetSettings(sqldb *sql.DB, info ServerInfo) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name, found, err := db.GetSetting(sqldb, serverNameSettingKey)
@@ -161,17 +164,30 @@ func handleGetSettings(sqldb *sql.DB, info ServerInfo) http.HandlerFunc {
 			name = defaultServerName
 		}
 
+		logFilePath, err := db.GetLogFilePath(sqldb)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(settingsResponse{ServerName: name, Port: info.Port, DBPath: info.DBPath})
+		json.NewEncoder(w).Encode(settingsResponse{
+			ServerName: name, Port: info.Port, DBPath: info.DBPath, LogFilePath: logFilePath,
+		})
 	}
 }
 
 type updateSettingsRequest struct {
 	ServerName string `json:"server_name"`
+	// LogFilePath empty means stdout only.
+	LogFilePath string `json:"log_file_path"`
 }
 
-// handlePutSettings updates the editable system settings (currently just
-// the server name).
+// handlePutSettings updates the editable system settings: the server
+// name and where logs are written. A log_file_path that can't be
+// opened for writing is rejected outright (400) rather than silently
+// falling back to stdout, so a typo doesn't quietly disable file
+// logging the admin thought they'd just turned on.
 func handlePutSettings(sqldb *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req updateSettingsRequest
@@ -184,7 +200,16 @@ func handlePutSettings(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		if err := logging.Configure(req.LogFilePath); err != nil {
+			http.Error(w, "log file path isn't writable: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
 		if err := db.SetSetting(sqldb, serverNameSettingKey, req.ServerName); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if err := db.SetLogFilePath(sqldb, req.LogFilePath); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}

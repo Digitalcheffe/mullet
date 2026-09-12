@@ -6,6 +6,7 @@ interface Settings {
   server_name: string;
   port: string;
   db_path: string;
+  log_file_path: string;
 }
 
 interface SMTPConfig {
@@ -29,7 +30,9 @@ export default function SettingsPage() {
   const apiFetch = useApiFetch();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [serverName, setServerName] = useState('');
+  const [logFilePath, setLogFilePath] = useState('');
   const [status, setStatus] = useState<SaveStatus>('idle');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +43,7 @@ export default function SettingsPage() {
         if (cancelled) return;
         setSettings(body);
         setServerName(body.server_name);
+        setLogFilePath(body.log_file_path);
       });
 
     return () => {
@@ -49,16 +53,22 @@ export default function SettingsPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    setError(null);
     setStatus('saving');
     try {
       const res = await apiFetch('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ server_name: serverName }),
+        body: JSON.stringify({ server_name: serverName, log_file_path: logFilePath }),
       });
-      if (!res.ok) throw new Error('save failed');
+      if (!res.ok) {
+        setError((await res.text()) || 'Failed to save.');
+        setStatus('error');
+        return;
+      }
       setStatus('saved');
     } catch {
+      setError('Could not reach the server.');
       setStatus('error');
     }
   }
@@ -85,6 +95,21 @@ export default function SettingsPage() {
               required
             />
           </label>
+          <label className="field">
+            <span className="kicker">Log file path</span>
+            <input
+              value={logFilePath}
+              onChange={(e) => {
+                setLogFilePath(e.target.value);
+                setStatus('idle');
+              }}
+              placeholder="Leave blank to log to stdout only"
+            />
+            <span className="field-help">
+              When set, logs are written to both stdout and this file. The path must be writable by
+              the server process.
+            </span>
+          </label>
           <div className="settings-form-actions">
             <button type="submit" className="btn-primary" disabled={status === 'saving'}>
               {status === 'saving' ? 'Saving…' : 'Save'}
@@ -92,7 +117,7 @@ export default function SettingsPage() {
             {status === 'saved' && <span className="save-note ok">Saved.</span>}
             {status === 'error' && (
               <span className="save-note error" role="alert">
-                Failed to save.
+                {error}
               </span>
             )}
           </div>

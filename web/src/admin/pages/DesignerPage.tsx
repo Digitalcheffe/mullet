@@ -685,6 +685,18 @@ function ConfigFieldInput({
   onChange: (v: unknown) => void;
 }) {
   switch (field.type) {
+    case 'textarea':
+      return (
+        <label className="field" key={fieldKey}>
+          <span className="kicker">{field.label}</span>
+          <textarea
+            rows={4}
+            value={typeof value === 'string' ? value : ''}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          {field.helpText && <span className="field-help">{field.helpText}</span>}
+        </label>
+      );
     case 'toggle':
       return (
         <label className="toggle-row" key={fieldKey}>

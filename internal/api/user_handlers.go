@@ -4,12 +4,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/Digitalcheffe/mullet/internal/auth"
 	"github.com/Digitalcheffe/mullet/internal/db"
+	"github.com/Digitalcheffe/mullet/internal/notify"
 )
 
 type userResponse struct {
@@ -75,6 +77,10 @@ func handleCreateUser(sqldb *sql.DB) http.HandlerFunc {
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
+		}
+
+		if err := notify.NewUser(sqldb, user.Username); err != nil {
+			log.Printf("user %d created but notification failed: %v", user.ID, err)
 		}
 
 		w.Header().Set("Content-Type", "application/json")

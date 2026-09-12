@@ -45,7 +45,12 @@ func scanClient(row interface{ Scan(...any) error }) (Client, error) {
 // between one registration and the next (an app update, a DHCP lease
 // renewal) and there's no reason to keep serving stale values just
 // because the client_id itself didn't change.
-func RegisterClient(sqldb *sql.DB, clientID, name string, platform, appVersion, ipAddress *string) (Client, error) {
+//
+// The second return reports whether this was a genuinely new
+// registration (as opposed to a repeat) -- issue #112's "new client
+// pending approval" notification fires only on that first attempt, not
+// on every retry a still-pending client makes before it's approved.
+func RegisterClient(sqldb *sql.DB, clientID, name string, platform, appVersion, ipAddress *string) (Client, bool, error) {
 	result, err := sqldb.Exec(
 		`INSERT INTO clients (client_id, name, platform, app_version, ip_address) VALUES (?, ?, ?, ?, ?)`,
 		clientID, name, platform, appVersion, ipAddress,
@@ -56,17 +61,19 @@ func RegisterClient(sqldb *sql.DB, clientID, name string, platform, appVersion, 
 				`UPDATE clients SET platform = ?, app_version = ?, ip_address = ? WHERE client_id = ?`,
 				platform, appVersion, ipAddress, clientID,
 			); err != nil {
-				return Client{}, fmt.Errorf("refreshing client %q: %w", clientID, err)
+				return Client{}, false, fmt.Errorf("refreshing client %q: %w", clientID, err)
 			}
-			return GetClientByClientID(sqldb, clientID)
+			c, err := GetClientByClientID(sqldb, clientID)
+			return c, false, err
 		}
-		return Client{}, fmt.Errorf("registering client %q: %w", clientID, err)
+		return Client{}, false, fmt.Errorf("registering client %q: %w", clientID, err)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return Client{}, fmt.Errorf("reading new client id: %w", err)
+		return Client{}, false, fmt.Errorf("reading new client id: %w", err)
 	}
-	return GetClient(sqldb, int(id))
+	c, err := GetClient(sqldb, int(id))
+	return c, true, err
 }
 
 // GetClient returns one client by its internal ID, or ErrNotFound.

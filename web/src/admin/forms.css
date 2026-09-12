@@ -57,6 +57,12 @@
   padding: 8px 12px;
 }
 
+.form-note {
+  font: 500 13px var(--font-body);
+  color: var(--ink-soft);
+  margin: 0;
+}
+
 /* Centered card layout shared by LoginPage and SetupWizard. */
 .auth-page {
   min-height: 100svh;
@@ -101,4 +107,14 @@
   color: var(--ink-soft);
   text-align: center;
   margin: -10px 0 4px;
+}
+
+.auth-secondary-link {
+  font: 600 13px var(--font-body);
+  color: var(--accent);
+  text-align: center;
+  text-decoration: none;
+}
+.auth-secondary-link:hover {
+  text-decoration: underline;
 }

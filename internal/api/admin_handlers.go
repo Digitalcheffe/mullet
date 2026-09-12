@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/Digitalcheffe/mullet/internal/auth"
+	"github.com/Digitalcheffe/mullet/internal/db"
 )
 
 type loginRequest struct {
@@ -143,19 +144,34 @@ func handleLogin(sqldb *sql.DB, jwtSecret []byte) http.HandlerFunc {
 	}
 }
 
-// handleWhoAmI returns the authenticated user's identity. It exists to
-// exercise requireAuth end-to-end; real admin endpoints (settings, users,
-// plugins, displays, ...) land in later issues.
-func handleWhoAmI(w http.ResponseWriter, r *http.Request) {
-	claims, ok := claimsFromContext(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
+// handleWhoAmI returns the authenticated user's identity, including
+// their own email (issue #78 -- used to prefill Settings' account
+// section and as the default test-email recipient).
+func handleWhoAmI(sqldb *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		claims, ok := claimsFromContext(r.Context())
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"user_id":  claims.UserID,
-		"username": claims.Username,
-	})
+		// claims.UserID has no matching row under AUTH_DISABLED (see
+		// middleware.go's devClaims, UserID: 0) -- that's expected there,
+		// not a real lookup failure, so it just means "no email" rather
+		// than a 500.
+		var userEmail *string
+		if user, err := db.GetUser(sqldb, claims.UserID); err == nil {
+			userEmail = user.Email
+		} else if !errors.Is(err, db.ErrNotFound) {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"user_id":  claims.UserID,
+			"username": claims.Username,
+			"email":    userEmail,
+		})
+	}
 }

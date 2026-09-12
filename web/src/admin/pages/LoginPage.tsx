@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 
 export default function LoginPage() {
@@ -42,6 +43,9 @@ export default function LoginPage() {
         <button type="submit" className="btn-primary" disabled={submitting}>
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
+        <Link className="auth-secondary-link" to="/admin/forgot-password">
+          Forgot password?
+        </Link>
       </form>
     </div>
   );

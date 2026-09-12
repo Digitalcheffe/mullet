@@ -113,6 +113,8 @@ export default function SettingsPage() {
       <AccountSection apiFetch={apiFetch} />
       <UsersSection apiFetch={apiFetch} />
       <SMTPSection apiFetch={apiFetch} />
+      <WebhooksSection apiFetch={apiFetch} />
+      <NotificationsSection apiFetch={apiFetch} />
     </div>
   );
 }
@@ -607,6 +609,252 @@ function SMTPSection({ apiFetch }: { apiFetch: ReturnType<typeof useApiFetch> })
           {testStatus === 'error' && (
             <span className="save-note error" role="alert">
               {testError}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface WebhookConfig {
+  url: string;
+  has_secret: boolean;
+  payload_template: string;
+}
+
+function WebhooksSection({ apiFetch }: { apiFetch: ReturnType<typeof useApiFetch> }) {
+  const [loaded, setLoaded] = useState(false);
+  const [hasSecret, setHasSecret] = useState(false);
+  const [url, setUrl] = useState('');
+  const [secret, setSecret] = useState('');
+  const [payloadTemplate, setPayloadTemplate] = useState('');
+  const [status, setStatus] = useState<SaveStatus>('idle');
+  const [error, setError] = useState<string | null>(null);
+
+  const [testStatus, setTestStatus] = useState<SaveStatus>('idle');
+  const [testError, setTestError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/api/admin/settings/webhook')
+      .then((res) => res.json())
+      .then((body: WebhookConfig) => {
+        if (cancelled) return;
+        setUrl(body.url);
+        setHasSecret(body.has_secret);
+        setPayloadTemplate(body.payload_template);
+        setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch]);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setStatus('saving');
+    try {
+      const res = await apiFetch('/api/admin/settings/webhook', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, secret, payload_template: payloadTemplate }),
+      });
+      if (!res.ok) {
+        setError((await res.text()) || 'Failed to save.');
+        setStatus('error');
+        return;
+      }
+      if (secret) {
+        setHasSecret(true);
+        setSecret('');
+      }
+      setStatus('saved');
+    } catch {
+      setError('Could not reach the server.');
+      setStatus('error');
+    }
+  }
+
+  async function handleSendTest() {
+    setTestStatus('saving');
+    setTestError(null);
+    try {
+      const res = await apiFetch('/api/admin/settings/webhook/test', { method: 'POST' });
+      if (!res.ok) {
+        setTestError((await res.text()) || 'Failed to deliver.');
+        setTestStatus('error');
+        return;
+      }
+      setTestStatus('saved');
+    } catch {
+      setTestError('Could not reach the server.');
+      setTestStatus('error');
+    }
+  }
+
+  if (!loaded) {
+    return null;
+  }
+
+  return (
+    <div className="settings-card">
+      <h2>Webhooks</h2>
+      <p className="settings-form-help">Deliver notification events to an HTTP endpoint as JSON.</p>
+      <form className="settings-form" onSubmit={handleSubmit}>
+        <label className="field">
+          <span className="kicker">URL</span>
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              setStatus('idle');
+            }}
+            placeholder="https://example.com/webhook"
+          />
+        </label>
+        <label className="field">
+          <span className="kicker">Signing secret{hasSecret ? ' (set)' : ''}</span>
+          <input
+            type="password"
+            value={secret}
+            onChange={(e) => {
+              setSecret(e.target.value);
+              setStatus('idle');
+            }}
+            placeholder={hasSecret ? 'Leave blank to keep current secret' : 'Optional'}
+          />
+          <span className="field-help">
+            If set, each request is signed with an X-Mullet-Signature: sha256=... header (HMAC-SHA256
+            over the raw body).
+          </span>
+        </label>
+        <label className="field">
+          <span className="kicker">Payload template</span>
+          <textarea
+            className="webhook-template"
+            value={payloadTemplate}
+            onChange={(e) => {
+              setPayloadTemplate(e.target.value);
+              setStatus('idle');
+            }}
+            rows={6}
+            spellCheck={false}
+          />
+          <span className="field-help">
+            Must render to valid JSON. Variables: {'{event}'}, {'{subject}'}, {'{message}'}, {'{timestamp}'}
+            -- each is JSON-escaped automatically, so leave them inside quotes.
+          </span>
+        </label>
+        <div className="settings-form-actions">
+          <button type="submit" className="btn-primary" disabled={status === 'saving'}>
+            {status === 'saving' ? 'Saving…' : 'Save'}
+          </button>
+          {status === 'saved' && <span className="save-note ok">Saved.</span>}
+          {status === 'error' && (
+            <span className="save-note error" role="alert">
+              {error}
+            </span>
+          )}
+        </div>
+      </form>
+
+      <div className="settings-readonly">
+        <div className="settings-form-actions">
+          <button type="button" className="btn-primary" onClick={handleSendTest} disabled={testStatus === 'saving'}>
+            {testStatus === 'saving' ? 'Sending…' : 'Send test webhook'}
+          </button>
+          {testStatus === 'saved' && <span className="save-note ok">Sent.</span>}
+          {testStatus === 'error' && (
+            <span className="save-note error" role="alert">
+              {testError}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface NotificationPreferences {
+  new_user: boolean;
+  password_reset_requested: boolean;
+  password_reset_completed: boolean;
+  client_registered: boolean;
+  client_approved: boolean;
+}
+
+const NOTIFICATION_EVENTS: { key: keyof NotificationPreferences; label: string }[] = [
+  { key: 'new_user', label: 'A new admin account is created' },
+  { key: 'password_reset_requested', label: 'A password reset is requested' },
+  { key: 'password_reset_completed', label: 'A password reset is completed' },
+  { key: 'client_registered', label: 'A new display client registers' },
+  { key: 'client_approved', label: 'A pending client is approved' },
+];
+
+function NotificationsSection({ apiFetch }: { apiFetch: ReturnType<typeof useApiFetch> }) {
+  const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
+  const [status, setStatus] = useState<SaveStatus>('idle');
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/api/admin/settings/notifications')
+      .then((res) => res.json())
+      .then((body: NotificationPreferences) => {
+        if (!cancelled) setPrefs(body);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch]);
+
+  async function handleToggle(key: keyof NotificationPreferences, value: boolean) {
+    if (!prefs) return;
+    const next = { ...prefs, [key]: value };
+    setPrefs(next);
+    setStatus('saving');
+    try {
+      const res = await apiFetch('/api/admin/settings/notifications', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      });
+      if (!res.ok) throw new Error('save failed');
+      setStatus('saved');
+    } catch {
+      setStatus('error');
+    }
+  }
+
+  if (!prefs) {
+    return null;
+  }
+
+  return (
+    <div className="settings-card">
+      <h2>Notifications</h2>
+      <p className="settings-form-help">
+        Notify every admin with an address on file, and/or deliver to a webhook, when one of
+        these happens. Requires SMTP and/or a webhook URL to be configured above.
+      </p>
+      <div className="settings-form">
+        {NOTIFICATION_EVENTS.map(({ key, label }) => (
+          <label className="toggle-row" key={key}>
+            <span>{label}</span>
+            <input
+              type="checkbox"
+              checked={prefs[key]}
+              onChange={(e) => handleToggle(key, e.target.checked)}
+            />
+          </label>
+        ))}
+        <div className="settings-form-actions">
+          {status === 'saved' && <span className="save-note ok">Saved.</span>}
+          {status === 'error' && (
+            <span className="save-note error" role="alert">
+              Failed to save.
             </span>
           )}
         </div>

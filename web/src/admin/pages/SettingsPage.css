@@ -82,6 +82,30 @@
   cursor: default;
 }
 
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 600 13px var(--font-body);
+  color: var(--ink);
+}
+
+.field-help {
+  font: 500 11.5px var(--font-body);
+  color: var(--ink-soft);
+}
+
+.webhook-template {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font: 500 12.5px var(--font-mono, monospace);
+  color: var(--ink);
+  background: var(--surface);
+  resize: vertical;
+  min-height: 100px;
+}
+
 .settings-form {
   display: flex;
   flex-direction: column;

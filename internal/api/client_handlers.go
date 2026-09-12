@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Digitalcheffe/mullet/internal/db"
+	"github.com/Digitalcheffe/mullet/internal/notify"
 )
 
 // clientPollIntervalSeconds is the poll interval every client is told
@@ -119,10 +121,15 @@ func handleRegisterClient(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		c, err := db.RegisterClient(sqldb, req.ClientID, req.Name, nullableString(req.Platform), nullableString(req.AppVersion), nullableString(clientIP(r)))
+		c, isNew, err := db.RegisterClient(sqldb, req.ClientID, req.Name, nullableString(req.Platform), nullableString(req.AppVersion), nullableString(clientIP(r)))
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
+		}
+		if isNew {
+			if err := notify.ClientRegistered(sqldb, c.Name); err != nil {
+				log.Printf("client %d registered but notification failed: %v", c.ID, err)
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -308,6 +315,13 @@ func handleApproveClient(sqldb *sql.DB) http.HandlerFunc {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+
+		if c, err := db.GetClient(sqldb, id); err != nil {
+			log.Printf("client %d approved but looking it up for notification failed: %v", id, err)
+		} else if err := notify.ClientApproved(sqldb, c.Name); err != nil {
+			log.Printf("client %d approved but notification failed: %v", id, err)
+		}
+
 		writeClient(w, sqldb, id, http.StatusOK)
 	}
 }

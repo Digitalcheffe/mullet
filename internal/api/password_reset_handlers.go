@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 
 	"github.com/Digitalcheffe/mullet/internal/auth"
 	"github.com/Digitalcheffe/mullet/internal/db"
 	"github.com/Digitalcheffe/mullet/internal/email"
+	"github.com/Digitalcheffe/mullet/internal/notify"
 )
 
 type forgotPasswordRequest struct {
@@ -89,6 +91,10 @@ func handleForgotPassword(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		if err := notify.PasswordResetRequested(sqldb, user.Username); err != nil {
+			log.Printf("password reset requested for user %d but notification failed: %v", user.ID, err)
+		}
+
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -132,6 +138,12 @@ func handleResetPassword(sqldb *sql.DB) http.HandlerFunc {
 		if err := db.SetUserPasswordHash(sqldb, userID, hash); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
+		}
+
+		if user, err := db.GetUser(sqldb, userID); err != nil {
+			log.Printf("password reset completed for user %d but looking it up for notification failed: %v", userID, err)
+		} else if err := notify.PasswordResetCompleted(sqldb, user.Username); err != nil {
+			log.Printf("password reset completed for user %d but notification failed: %v", userID, err)
 		}
 
 		w.WriteHeader(http.StatusNoContent)

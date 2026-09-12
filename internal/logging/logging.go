@@ -14,6 +14,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -37,6 +38,18 @@ func Configure(path string) error {
 		closeCurrent()
 		log.SetOutput(os.Stdout)
 		return nil
+	}
+
+	// The Docker image's default (/data/logs/mullet.log) puts the log in
+	// its own subdirectory of the mounted volume, which won't exist on
+	// a fresh deployment -- and an admin typing a path via Settings has
+	// the same problem for any path whose parent doesn't already exist.
+	// Creating it here (rather than failing over to stdout) is what
+	// actually makes both cases work without an extra manual step.
+	if dir := filepath.Dir(path); dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("creating log directory %q: %w", dir, err)
+		}
 	}
 
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)

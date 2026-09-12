@@ -121,8 +121,7 @@ func TestReadShapeFiltersByPluginInstance(t *testing.T) {
 		t.Fatalf("seeding instance 2 row: %v", err)
 	}
 
-	instanceTwo := 2
-	rows, sources, _, err := ReadShape(sqldb, "weather_current", &instanceTwo, nil, nil)
+	rows, sources, _, err := ReadShape(sqldb, "weather_current", []int{2}, nil, nil)
 	if err != nil {
 		t.Fatalf("ReadShape: %v", err)
 	}
@@ -131,6 +130,40 @@ func TestReadShapeFiltersByPluginInstance(t *testing.T) {
 	}
 	if len(sources) != 1 || sources[0] != "open-meteo" {
 		t.Errorf("sources = %v, want [open-meteo]", sources)
+	}
+}
+
+// Issue #97: a card can merge events from more than one calendar
+// source, so ReadShape needs to accept several plugin instance IDs and
+// union their rows into one response.
+func TestReadShapeMergesMultiplePluginInstances(t *testing.T) {
+	sqldb := newTestDB(t) // seeds plugin instance id=1
+
+	if _, err := sqldb.Exec(
+		`INSERT INTO data_plugin_instances (id, plugin_id, instance_name, refresh_seconds) VALUES (2, 'open-meteo', 'Backyard', 900)`,
+	); err != nil {
+		t.Fatalf("seeding second instance: %v", err)
+	}
+	if _, err := sqldb.Exec(
+		`INSERT INTO shape_weather_current (id, plugin_instance_id, temp, condition, icon) VALUES ('current', 1, 20, 'Clear', 'clear')`,
+	); err != nil {
+		t.Fatalf("seeding instance 1 row: %v", err)
+	}
+	if _, err := sqldb.Exec(
+		`INSERT INTO shape_weather_current (id, plugin_instance_id, temp, condition, icon) VALUES ('current', 2, 15, 'Rain', 'rain')`,
+	); err != nil {
+		t.Fatalf("seeding instance 2 row: %v", err)
+	}
+
+	rows, sources, _, err := ReadShape(sqldb, "weather_current", []int{1, 2}, nil, nil)
+	if err != nil {
+		t.Fatalf("ReadShape: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Errorf("rows = %v, want 2 rows (both instances)", rows)
+	}
+	if len(sources) != 2 || sources[0] != "open-meteo" || sources[1] != "openweathermap" {
+		t.Errorf("sources = %v, want [open-meteo openweathermap]", sources)
 	}
 }
 

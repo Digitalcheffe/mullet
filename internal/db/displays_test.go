@@ -397,3 +397,116 @@ func TestDeletingDataPluginInstanceNullsCardReference(t *testing.T) {
 		t.Errorf("GetCard.DataPluginInstanceID = %v, want nil (SET NULL, card should survive)", got.DataPluginInstanceID)
 	}
 }
+
+// Issue #97: a multi-source-capable widget (calendar-agenda) can bind a
+// card to several data plugin instances at once via card_data_sources,
+// while the singular data_plugin_instance_id column stays in sync with
+// the first one for any code path that only reads that column.
+func TestCardDataSources(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	displayID, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30, true, true)
+	if err != nil {
+		t.Fatalf("CreateDisplay: %v", err)
+	}
+	screenID, err := CreateScreen(sqldb, displayID, "Main", 0, 16, 40, 8, "freeform", nil)
+	if err != nil {
+		t.Fatalf("CreateScreen: %v", err)
+	}
+	instanceA, err := CreatePluginInstance(sqldb, "ics-feed", "Family", 3600, false, "{}")
+	if err != nil {
+		t.Fatalf("CreatePluginInstance A: %v", err)
+	}
+	instanceB, err := CreatePluginInstance(sqldb, "ics-feed", "Birthdays", 3600, false, "{}")
+	if err != nil {
+		t.Fatalf("CreatePluginInstance B: %v", err)
+	}
+
+	cardID, err := CreateCard(sqldb, screenID, "calendar-agenda", nil, 1, 1, 6, 8, "{}", nil)
+	if err != nil {
+		t.Fatalf("CreateCard: %v", err)
+	}
+
+	if err := SetCardDataSources(sqldb, cardID, []int{instanceA, instanceB}); err != nil {
+		t.Fatalf("SetCardDataSources: %v", err)
+	}
+
+	sources, err := ListCardDataSources(sqldb, cardID)
+	if err != nil {
+		t.Fatalf("ListCardDataSources: %v", err)
+	}
+	if len(sources) != 2 || sources[0] != instanceA || sources[1] != instanceB {
+		t.Errorf("ListCardDataSources = %v, want [%d %d]", sources, instanceA, instanceB)
+	}
+
+	got, err := GetCard(sqldb, cardID)
+	if err != nil {
+		t.Fatalf("GetCard: %v", err)
+	}
+	if got.DataPluginInstanceID == nil || *got.DataPluginInstanceID != instanceA {
+		t.Errorf("GetCard.DataPluginInstanceID = %v, want %d (first of the set)", got.DataPluginInstanceID, instanceA)
+	}
+
+	// Replacing with a smaller set drops what's no longer included and
+	// re-syncs the singular column to the new first id.
+	if err := SetCardDataSources(sqldb, cardID, []int{instanceB}); err != nil {
+		t.Fatalf("SetCardDataSources (replace): %v", err)
+	}
+	sources, err = ListCardDataSources(sqldb, cardID)
+	if err != nil {
+		t.Fatalf("ListCardDataSources after replace: %v", err)
+	}
+	if len(sources) != 1 || sources[0] != instanceB {
+		t.Errorf("ListCardDataSources after replace = %v, want [%d]", sources, instanceB)
+	}
+	got, _ = GetCard(sqldb, cardID)
+	if got.DataPluginInstanceID == nil || *got.DataPluginInstanceID != instanceB {
+		t.Errorf("GetCard.DataPluginInstanceID after replace = %v, want %d", got.DataPluginInstanceID, instanceB)
+	}
+
+	// Clearing to an empty set nulls the singular column too.
+	if err := SetCardDataSources(sqldb, cardID, nil); err != nil {
+		t.Fatalf("SetCardDataSources (clear): %v", err)
+	}
+	sources, err = ListCardDataSources(sqldb, cardID)
+	if err != nil {
+		t.Fatalf("ListCardDataSources after clear: %v", err)
+	}
+	if len(sources) != 0 {
+		t.Errorf("ListCardDataSources after clear = %v, want empty", sources)
+	}
+	got, _ = GetCard(sqldb, cardID)
+	if got.DataPluginInstanceID != nil {
+		t.Errorf("GetCard.DataPluginInstanceID after clear = %v, want nil", got.DataPluginInstanceID)
+	}
+}
+
+func TestSetCardDataSourcesUnknownInstanceReturnsErrInUse(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	displayID, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30, true, true)
+	if err != nil {
+		t.Fatalf("CreateDisplay: %v", err)
+	}
+	screenID, err := CreateScreen(sqldb, displayID, "Main", 0, 16, 40, 8, "freeform", nil)
+	if err != nil {
+		t.Fatalf("CreateScreen: %v", err)
+	}
+	cardID, err := CreateCard(sqldb, screenID, "calendar-agenda", nil, 1, 1, 6, 8, "{}", nil)
+	if err != nil {
+		t.Fatalf("CreateCard: %v", err)
+	}
+
+	if err := SetCardDataSources(sqldb, cardID, []int{9999}); !errors.Is(err, ErrInUse) {
+		t.Errorf("SetCardDataSources(unknown instance) = %v, want ErrInUse", err)
+	}
+
+	// A rejected write must not partially apply.
+	sources, err := ListCardDataSources(sqldb, cardID)
+	if err != nil {
+		t.Fatalf("ListCardDataSources: %v", err)
+	}
+	if len(sources) != 0 {
+		t.Errorf("ListCardDataSources after rejected write = %v, want empty", sources)
+	}
+}

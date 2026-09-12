@@ -442,3 +442,67 @@ func DeleteCard(sqldb *sql.DB, id int) error {
 	}
 	return checkRowsAffected(result, id)
 }
+
+// ListCardDataSources returns the data plugin instance IDs a card reads
+// from beyond its primary data_plugin_instance_id, via card_data_sources
+// (issue #97's multi-source calendar cards). Empty, not an error, for a
+// card that doesn't use multi-source.
+func ListCardDataSources(sqldb *sql.DB, cardID int) ([]int, error) {
+	rows, err := sqldb.Query(`SELECT data_plugin_instance_id FROM card_data_sources WHERE card_id = ? ORDER BY data_plugin_instance_id`, cardID)
+	if err != nil {
+		return nil, fmt.Errorf("listing data sources for card %d: %w", cardID, err)
+	}
+	defer rows.Close()
+
+	ids := []int{}
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scanning card data source: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// SetCardDataSources replaces the full set of data plugin instances
+// cardID reads from in card_data_sources, and keeps cards.data_plugin_
+// instance_id in sync with the first id (or NULL if instanceIDs is
+// empty) so any code path that only reads the singular column -- every
+// non-multi-source widget -- keeps working unchanged. Runs in a single
+// transaction; returns ErrInUse if any id doesn't exist.
+func SetCardDataSources(sqldb *sql.DB, cardID int, instanceIDs []int) error {
+	tx, err := sqldb.Begin()
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM card_data_sources WHERE card_id = ?`, cardID); err != nil {
+		return fmt.Errorf("clearing data sources for card %d: %w", cardID, err)
+	}
+	for _, instanceID := range instanceIDs {
+		if _, err := tx.Exec(
+			`INSERT INTO card_data_sources (card_id, data_plugin_instance_id) VALUES (?, ?)`,
+			cardID, instanceID,
+		); err != nil {
+			if isForeignKeyViolation(err) {
+				return ErrInUse
+			}
+			return fmt.Errorf("adding data source %d for card %d: %w", instanceID, cardID, err)
+		}
+	}
+
+	var primary *int
+	if len(instanceIDs) > 0 {
+		primary = &instanceIDs[0]
+	}
+	if _, err := tx.Exec(`UPDATE cards SET data_plugin_instance_id = ? WHERE id = ?`, primary, cardID); err != nil {
+		if isForeignKeyViolation(err) {
+			return ErrInUse
+		}
+		return fmt.Errorf("syncing primary data source for card %d: %w", cardID, err)
+	}
+
+	return tx.Commit()
+}

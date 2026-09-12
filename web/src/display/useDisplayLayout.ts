@@ -5,6 +5,9 @@ export interface CardLayout {
   id: number;
   ui_plugin_id: string;
   data_plugin_instance_id: number | null;
+  // Present only for a multi-source card (issue #97) -- see
+  // UIPlugin.supportsMultiDataSource.
+  data_plugin_instance_ids?: number[];
   x: number;
   y: number;
   w: number;

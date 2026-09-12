@@ -20,8 +20,11 @@ type dataResponse struct {
 
 // handleGetShapeData serves GET /api/data/{shape}, reading directly from
 // the shape's typed table -- it never calls a plugin. Optional query
-// params: ?plugin={instance_id} scopes to one plugin instance; ?from=&to=
-// (RFC3339) range-filter shapes that support it (currently just events).
+// params: ?plugin={instance_id}, repeatable, scopes to one or more
+// plugin instances -- issue #97's multi-source calendar cards pass
+// several so a card can merge events from more than one calendar
+// source into one sorted response; ?from=&to= (RFC3339) range-filter
+// shapes that support it (currently just events).
 func handleGetShapeData(sqldb *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		shape := r.PathValue("shape")
@@ -30,14 +33,14 @@ func handleGetShapeData(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		var pluginInstanceID *int
-		if raw := r.URL.Query().Get("plugin"); raw != "" {
+		var pluginInstanceIDs []int
+		for _, raw := range r.URL.Query()["plugin"] {
 			id, err := strconv.Atoi(raw)
 			if err != nil {
 				http.Error(w, "plugin must be a numeric instance id", http.StatusBadRequest)
 				return
 			}
-			pluginInstanceID = &id
+			pluginInstanceIDs = append(pluginInstanceIDs, id)
 		}
 
 		from, to, err := parseTimeRange(r, shape)
@@ -46,7 +49,7 @@ func handleGetShapeData(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		rows, sources, lastUpdated, err := db.ReadShape(sqldb, shape, pluginInstanceID, from, to)
+		rows, sources, lastUpdated, err := db.ReadShape(sqldb, shape, pluginInstanceIDs, from, to)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return

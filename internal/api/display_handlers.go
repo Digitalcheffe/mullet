@@ -649,35 +649,45 @@ func writeScreen(w http.ResponseWriter, sqldb *sql.DB, id int, status int) {
 type cardRequest struct {
 	UIPluginID           string          `json:"ui_plugin_id"`
 	DataPluginInstanceID *int            `json:"data_plugin_instance_id"`
-	X                    int             `json:"x"`
-	Y                    int             `json:"y"`
-	W                    int             `json:"w"`
-	H                    int             `json:"h"`
-	Config               json.RawMessage `json:"config"`
-	ThemeOverride        json.RawMessage `json:"theme_override"`
+	// DataPluginInstanceIDs is only for a multi-source-capable widget
+	// (issue #97, e.g. calendar-agenda) -- nil means "leave
+	// card_data_sources alone" (every other widget's request omits this
+	// field entirely), while an explicit [] clears it. When present, it
+	// replaces the full set and its first id also becomes the card's
+	// singular DataPluginInstanceID, so old code paths that only read
+	// that column keep working.
+	DataPluginInstanceIDs []int           `json:"data_plugin_instance_ids,omitempty"`
+	X                     int             `json:"x"`
+	Y                     int             `json:"y"`
+	W                     int             `json:"w"`
+	H                     int             `json:"h"`
+	Config                json.RawMessage `json:"config"`
+	ThemeOverride         json.RawMessage `json:"theme_override"`
 }
 
 type cardResponse struct {
-	ID                   int             `json:"id"`
-	ScreenID             int             `json:"screen_id"`
-	UIPluginID           string          `json:"ui_plugin_id"`
-	DataPluginInstanceID *int            `json:"data_plugin_instance_id,omitempty"`
-	X                    int             `json:"x"`
-	Y                    int             `json:"y"`
-	W                    int             `json:"w"`
-	H                    int             `json:"h"`
-	Config               json.RawMessage `json:"config"`
-	ThemeOverride        json.RawMessage `json:"theme_override,omitempty"`
+	ID                    int             `json:"id"`
+	ScreenID              int             `json:"screen_id"`
+	UIPluginID            string          `json:"ui_plugin_id"`
+	DataPluginInstanceID  *int            `json:"data_plugin_instance_id,omitempty"`
+	DataPluginInstanceIDs []int           `json:"data_plugin_instance_ids,omitempty"`
+	X                     int             `json:"x"`
+	Y                     int             `json:"y"`
+	W                     int             `json:"w"`
+	H                     int             `json:"h"`
+	Config                json.RawMessage `json:"config"`
+	ThemeOverride         json.RawMessage `json:"theme_override,omitempty"`
 }
 
-func toCardResponse(c db.Card) cardResponse {
+func toCardResponse(c db.Card, dataSources []int) cardResponse {
 	config := c.Config
 	if config == "" {
 		config = "{}"
 	}
 	resp := cardResponse{
 		ID: c.ID, ScreenID: c.ScreenID, UIPluginID: c.UIPluginID, DataPluginInstanceID: c.DataPluginInstanceID,
-		X: c.X, Y: c.Y, W: c.W, H: c.H, Config: json.RawMessage(config),
+		DataPluginInstanceIDs: dataSources,
+		X:                     c.X, Y: c.Y, W: c.W, H: c.H, Config: json.RawMessage(config),
 	}
 	if c.ThemeOverride != nil {
 		resp.ThemeOverride = json.RawMessage(*c.ThemeOverride)
@@ -699,7 +709,12 @@ func handleListCards(sqldb *sql.DB) http.HandlerFunc {
 		}
 		resp := make([]cardResponse, len(cards))
 		for i, c := range cards {
-			resp[i] = toCardResponse(c)
+			sources, err := db.ListCardDataSources(sqldb, c.ID)
+			if err != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			resp[i] = toCardResponse(c, sources)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -742,6 +757,16 @@ func handleCreateCard(sqldb *sql.DB) http.HandlerFunc {
 		case err != nil:
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
+		}
+		if req.DataPluginInstanceIDs != nil {
+			if err := db.SetCardDataSources(sqldb, id, req.DataPluginInstanceIDs); err != nil {
+				if errors.Is(err, db.ErrInUse) {
+					http.Error(w, "data_plugin_instance_ids contains an id that doesn't exist", http.StatusBadRequest)
+					return
+				}
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
 		}
 		writeCard(w, sqldb, id, http.StatusCreated)
 	}
@@ -786,6 +811,16 @@ func handleUpdateCard(sqldb *sql.DB) http.HandlerFunc {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		if req.DataPluginInstanceIDs != nil {
+			if err := db.SetCardDataSources(sqldb, id, req.DataPluginInstanceIDs); err != nil {
+				if errors.Is(err, db.ErrInUse) {
+					http.Error(w, "data_plugin_instance_ids contains an id that doesn't exist", http.StatusBadRequest)
+					return
+				}
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+		}
 		writeCard(w, sqldb, id, http.StatusOK)
 	}
 }
@@ -815,9 +850,14 @@ func writeCard(w http.ResponseWriter, sqldb *sql.DB, id int, status int) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	sources, err := db.ListCardDataSources(sqldb, id)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(toCardResponse(c))
+	json.NewEncoder(w).Encode(toCardResponse(c, sources))
 }
 
 // ---- Display layout (public, no auth -- served to the display frontend
@@ -880,7 +920,12 @@ func handleGetDisplayLayout(sqldb *sql.DB) http.HandlerFunc {
 			}
 			cardResp := make([]cardResponse, len(cards))
 			for j, c := range cards {
-				cardResp[j] = toCardResponse(c)
+				sources, err := db.ListCardDataSources(sqldb, c.ID)
+				if err != nil {
+					http.Error(w, "internal error", http.StatusInternalServerError)
+					return
+				}
+				cardResp[j] = toCardResponse(c, sources)
 			}
 			resp.Screens[i] = screenLayoutResponse{screenResponse: toScreenResponse(s), Cards: cardResp}
 		}

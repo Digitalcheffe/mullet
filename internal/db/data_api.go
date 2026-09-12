@@ -59,12 +59,13 @@ func SupportsTimeRange(shape string) bool {
 	return ok
 }
 
-// ReadShape queries shape's table, optionally scoped to one plugin
-// instance and/or (for shapes in shapeTimeColumns) a time range. It
-// returns each row as a JSON-friendly column-name-to-value map, the
-// distinct plugin_id(s) that produced them, and the most recent
+// ReadShape queries shape's table, optionally scoped to one or more
+// plugin instances (issue #97: several, to merge multiple calendar
+// sources into one response) and/or (for shapes in shapeTimeColumns) a
+// time range. It returns each row as a JSON-friendly column-name-to-value
+// map, the distinct plugin_id(s) that produced them, and the most recent
 // fetched_at across the returned rows (nil if there are none).
-func ReadShape(sqldb *sql.DB, shape string, pluginInstanceID *int, from, to *time.Time) (rows []map[string]any, sources []string, lastUpdated *string, err error) {
+func ReadShape(sqldb *sql.DB, shape string, pluginInstanceIDs []int, from, to *time.Time) (rows []map[string]any, sources []string, lastUpdated *string, err error) {
 	table, ok := shapeTables[shape]
 	if !ok {
 		return nil, nil, nil, ErrUnknownShape
@@ -77,9 +78,13 @@ func ReadShape(sqldb *sql.DB, shape string, pluginInstanceID *int, from, to *tim
 	var conditions []string
 	var args []any
 
-	if pluginInstanceID != nil {
-		conditions = append(conditions, "s.plugin_instance_id = ?")
-		args = append(args, *pluginInstanceID)
+	if len(pluginInstanceIDs) > 0 {
+		placeholders := make([]string, len(pluginInstanceIDs))
+		for i, id := range pluginInstanceIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		conditions = append(conditions, fmt.Sprintf("s.plugin_instance_id IN (%s)", strings.Join(placeholders, ", ")))
 	}
 
 	if timeCol, ok := shapeTimeColumns[shape]; ok {

@@ -18,6 +18,7 @@ import { mediaNowPlayingPlugin } from './media-now-playing/MediaNowPlayingWidget
 import { packageTrackerPlugin } from './package-tracker/PackageTrackerWidget';
 import { notesPlugin } from './notes/NotesWidget';
 import { birthdaysPlugin } from './birthdays/BirthdaysWidget';
+import { countdownPlugin } from './countdown/CountdownWidget';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const uiPlugins: UIPlugin<any>[] = [
@@ -33,6 +34,7 @@ export const uiPlugins: UIPlugin<any>[] = [
   packageTrackerPlugin,
   notesPlugin,
   birthdaysPlugin,
+  countdownPlugin,
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

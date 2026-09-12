@@ -1,21 +1,12 @@
 import type { UIPlugin, WidgetProps } from '../../shared/types/plugin';
 import { cardStyle } from '../shared/cardStyle';
 import { parseSQLDateTime } from '../shared/sqlDateTime';
+import { daysBetween } from '../shared/dateMath';
 import type { EventRow } from '../calendar-agenda/CalendarAgendaWidget';
 import './BirthdaysWidget.css';
 
 interface Config {
   count?: number;
-}
-
-// Whole calendar days apart, in the viewer's local timezone -- matches
-// calendar-agenda's own day-vs-instant distinction (see its
-// localDayKey), since "3 days away" should count wall-clock days, not
-// fractions of 24 hours that'd round oddly near midnight.
-function daysUntil(from: Date, to: Date): number {
-  const a = new Date(from.getFullYear(), from.getMonth(), from.getDate());
-  const b = new Date(to.getFullYear(), to.getMonth(), to.getDate());
-  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
 
 function relativeDayLabel(n: number): string {
@@ -40,7 +31,7 @@ function UpcomingBirthdaysComponent({ data, config, theme }: WidgetProps<EventRo
 
   const upcoming = data
     .map((e) => ({ event: e, startDate: parseSQLDateTime(e.start) }))
-    .filter(({ startDate }) => daysUntil(now, startDate) >= 0)
+    .filter(({ startDate }) => daysBetween(now, startDate) >= 0)
     .sort((a, b) => a.startDate.getTime() - b.startDate.getTime())
     .slice(0, count);
 
@@ -58,7 +49,7 @@ function UpcomingBirthdaysComponent({ data, config, theme }: WidgetProps<EventRo
               {startDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
             </span>
             <span className="birthday-relative" style={{ color: theme.accentColor }}>
-              {relativeDayLabel(daysUntil(now, startDate))}
+              {relativeDayLabel(daysBetween(now, startDate))}
             </span>
           </div>
         ))

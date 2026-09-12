@@ -35,6 +35,53 @@
   margin: -6px 0 0;
 }
 
+.users-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.users-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.users-list-row:last-child {
+  border-bottom: none;
+}
+
+.users-list-username {
+  font: 700 13px var(--font-body);
+  color: var(--ink);
+}
+
+.users-list-meta {
+  font: 500 12px var(--font-body);
+  color: var(--ink-soft);
+}
+
+.btn-danger {
+  font: 700 12px var(--font-body);
+  color: var(--error);
+  background: var(--surface);
+  border: 1px solid var(--error-bg);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+}
+.btn-danger:hover:not(:disabled) {
+  background: var(--error-bg);
+}
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .settings-form {
   display: flex;
   flex-direction: column;

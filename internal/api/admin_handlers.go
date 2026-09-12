@@ -36,7 +36,7 @@ func handleSetupStatus(sqldb *sql.DB, authDisabled bool) http.HandlerFunc {
 			return
 		}
 
-		count, err := userCount(sqldb)
+		count, err := db.CountUsers(sqldb)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -60,7 +60,7 @@ func handleSetup(sqldb *sql.DB, jwtSecret []byte) http.HandlerFunc {
 			return
 		}
 
-		count, err := userCount(sqldb)
+		count, err := db.CountUsers(sqldb)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -96,12 +96,6 @@ func handleSetup(sqldb *sql.DB, jwtSecret []byte) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(loginResponse{Token: token})
 	}
-}
-
-func userCount(sqldb *sql.DB) (int, error) {
-	var count int
-	err := sqldb.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&count)
-	return count, err
 }
 
 // handleLogin authenticates a username/password against the users table

@@ -48,6 +48,10 @@ function formatTime(d: Date): string {
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
+function calendarInitial(name: string | undefined): string {
+  return (name?.trim()?.[0] ?? '?').toUpperCase();
+}
+
 function CalendarAgendaComponent({ data, config, size, theme, pluginInstanceId }: WidgetProps<EventRow>) {
   const cfg = config as Config;
   const days = Math.max(1, cfg.days ?? 5);
@@ -77,6 +81,18 @@ function CalendarAgendaComponent({ data, config, size, theme, pluginInstanceId }
 
   const style = cardStyle(theme);
 
+  // Only the calendars actually represented in the visible day range --
+  // a legend listing every configured calendar (including ones with no
+  // events in view) would just be noise.
+  const visibleCalendarIds = new Set<number>();
+  for (const list of byDay.values()) {
+    for (const e of list) visibleCalendarIds.add(e.calendar_id);
+  }
+  const legend = Array.from(visibleCalendarIds).map((id) => {
+    const cal = calendarByID.get(id);
+    return { id, name: cal?.name ?? `Calendar ${id}`, color: cal?.color || colorForID(id) };
+  });
+
   return (
     <div className="calendar-agenda-widget mullet-card" style={style}>
       {dayList.map(({ key, date }) => {
@@ -94,6 +110,9 @@ function CalendarAgendaComponent({ data, config, size, theme, pluginInstanceId }
                 const color = cal?.color || colorForID(e.calendar_id);
                 return (
                   <div className="ca-event" key={e.id} style={{ borderLeftColor: color }}>
+                    <span className="ca-cal-pill" style={{ background: color }} title={cal?.name}>
+                      {calendarInitial(cal?.name)}
+                    </span>
                     {e.all_day ? (
                       <span className="ca-badge" style={{ background: color }}>
                         All day
@@ -112,6 +131,16 @@ function CalendarAgendaComponent({ data, config, size, theme, pluginInstanceId }
           </div>
         );
       })}
+      {legend.length > 1 && (
+        <div className="ca-legend">
+          {legend.map((l) => (
+            <span className="ca-legend-item" key={l.id}>
+              <span className="ca-legend-swatch" style={{ background: l.color }} />
+              {l.name}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

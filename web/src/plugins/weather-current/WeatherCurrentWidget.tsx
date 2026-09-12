@@ -1,6 +1,6 @@
 import type { UIPlugin, WidgetProps } from '../../shared/types/plugin';
 import { cardStyle } from '../shared/cardStyle';
-import { conditionGlyph } from '../shared/conditionIcons';
+import { ConditionIcon, isNightTime } from '../shared/conditionIcons';
 import './WeatherCurrentWidget.css';
 
 // One row from GET /api/data/weather_current -- field names match the
@@ -55,7 +55,14 @@ function WeatherCurrentComponent({ data, config, size, theme }: WidgetProps<Weat
   return (
     <div className={`weather-current-widget mullet-card${compact ? ' wc-compact' : ''}`} style={style}>
       <div className="wc-main">
-        <span className="wc-glyph">{conditionGlyph(current.condition)}</span>
+        <span className="wc-glyph" style={{ color: theme.accentColor }}>
+          <ConditionIcon
+            condition={current.condition}
+            isNight={isNightTime(current.sunrise, current.sunset)}
+            width="1em"
+            height="1em"
+          />
+        </span>
         <span className="wc-temp">
           {round(current.temp)}
           {unit}

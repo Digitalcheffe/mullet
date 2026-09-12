@@ -1,5 +1,6 @@
 import type { UIPlugin, WidgetProps } from '../../shared/types/plugin';
 import { cardStyle } from '../shared/cardStyle';
+import { DeviceIcon } from './deviceIcons';
 import './HomeStatusWidget.css';
 
 // One row from GET /api/data/home_devices -- field names match the
@@ -17,15 +18,6 @@ export interface HomeDeviceRow {
 interface Config {
   showState?: boolean;
 }
-
-const DEVICE_GLYPH: Record<string, string> = {
-  light: '💡',
-  lock: '🔒',
-  door: '🚪',
-  garage: '🚗',
-  sensor: '📟',
-  climate: '🌡️',
-};
 
 // Tri-state read on a device's raw `state` string -- 'good'/'warn'/'bad'
 // only make sense for devices with a clear "at rest" state (a locked
@@ -77,7 +69,9 @@ function HomeStatusComponent({ data, config, size, theme }: WidgetProps<HomeDevi
           <div className="hs-grid">
             {devices.map((d) => (
               <div className="hs-device" key={d.id}>
-                <span className="hs-icon">{DEVICE_GLYPH[d.device_type] ?? '🔌'}</span>
+                <span className="hs-icon" style={{ color: theme.accentColor }}>
+                  <DeviceIcon deviceType={d.device_type} width="1em" height="1em" />
+                </span>
                 <span className="hs-name">{d.name}</span>
                 <span className={`hs-dot ${statusClass(d.device_type, d.state)}`} />
                 {showState && !compact && <span className="hs-state">{d.state}</span>}

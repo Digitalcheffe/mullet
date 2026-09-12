@@ -1,5 +1,6 @@
 import type { UIPlugin, WidgetProps } from '../../shared/types/plugin';
 import { cardStyle } from '../shared/cardStyle';
+import { MusicNoteIcon, PauseIcon, PlayIcon } from './mediaIcons';
 import './MediaNowPlayingWidget.css';
 
 // One row from GET /api/data/media_status -- field names match the
@@ -47,14 +48,22 @@ function MediaNowPlayingComponent({ data, config, size, theme }: WidgetProps<Med
     <div className={`media-now-playing-widget mullet-card${compact ? ' mnp-compact' : ''}`} style={style}>
       {showAlbumArt && !compact && (
         <div className="mnp-art">
-          {player.album_art_url ? <img src={player.album_art_url} alt="" /> : <span className="mnp-art-placeholder">🎵</span>}
+          {player.album_art_url ? (
+            <img src={player.album_art_url} alt="" />
+          ) : (
+            <span className="mnp-art-placeholder">
+              <MusicNoteIcon width="1em" height="1em" />
+            </span>
+          )}
         </div>
       )}
       <div className="mnp-info">
         <div className="mnp-title">{player.title ?? 'Unknown track'}</div>
         {player.artist && <div className="mnp-artist">{player.artist}</div>}
         <div className="mnp-meta" style={{ color: theme.accentColor }}>
-          <span className="mnp-play-icon">{player.is_playing ? '▶' : '⏸'}</span>
+          <span className="mnp-play-icon">
+            {player.is_playing ? <PlayIcon width="1em" height="1em" /> : <PauseIcon width="1em" height="1em" />}
+          </span>
           <span className="mnp-player-name">{player.player_name}</span>
         </div>
       </div>

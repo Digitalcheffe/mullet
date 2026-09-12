@@ -24,7 +24,7 @@
 
 .btn-primary {
   font: 700 13px var(--font-body);
-  color: #3a1b0e;
+  color: #fff;
   background: var(--accent);
   border: none;
   padding: 9px 18px;
@@ -86,4 +86,19 @@
   font: 500 13px var(--font-body);
   color: var(--ink-soft);
   margin: -8px 0 0;
+}
+
+.auth-logo {
+  height: 34px;
+  width: auto;
+  align-self: center;
+}
+
+.auth-card .auth-subtitle {
+  font: 600 12px var(--font-body);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-align: center;
+  margin: -10px 0 4px;
 }

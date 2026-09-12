@@ -24,7 +24,8 @@ export default function LoginPage() {
   return (
     <div className="auth-page">
       <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>Mullet Admin</h1>
+        <img className="auth-logo" src="/logo-wordmark.png" alt="Mullet" />
+        <p className="auth-subtitle">Admin</p>
         {error && (
           <p className="form-error" role="alert">
             {error}

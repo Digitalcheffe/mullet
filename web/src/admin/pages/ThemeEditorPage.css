@@ -63,7 +63,18 @@
 
 .theme-editor-layout {
   display: flex;
-  align-items: flex-start;
+  /* Not flex-start -- the two columns rarely end up the same natural
+     height (the field list's length varies with e.g. how many gradient
+     stops are in the background), and position: sticky can only hold
+     within its own containing block's height. With flex-start, once the
+     shorter column's box ran out before the taller one finished
+     scrolling, its sticky child had nowhere left to stick and just
+     scrolled away with the page for however much of the taller column's
+     length was left -- exactly the "live preview still scrolls with the
+     page" symptom this fixes. Stretching (the flex default) guarantees
+     the preview's containing column is always at least as tall as the
+     fields column, so it has room to stick for the entire scroll. */
+  align-items: stretch;
   gap: 24px;
 }
 
@@ -75,11 +86,23 @@
   gap: 14px;
 }
 
-.theme-editor-preview {
+.theme-editor-preview-col {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Only the preview box itself sticks -- the secondary fields below it
+   (typography, semantic colors) scroll normally, same as the left
+   column, rather than being pinned along with it. */
+.theme-editor-preview {
   position: sticky;
   top: 0;
+  background: var(--bg-app);
+  padding-bottom: 4px;
+  z-index: 1;
 }
 
 .theme-editor-preview h2 {
@@ -91,4 +114,10 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   min-height: 200px;
+}
+
+.theme-editor-secondary-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }

@@ -14,10 +14,25 @@
   content: '';
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: -2;
   border-radius: inherit;
   background: var(--mullet-card-background);
   border: 1px solid var(--mullet-card-border);
   backdrop-filter: blur(var(--mullet-card-blur));
   opacity: var(--mullet-card-opacity);
+  box-shadow: var(--mullet-card-shadow);
+}
+/* A faint inner top-edge highlight (issue #90's "card chrome" task) --
+   its own layer rather than folded into ::before so it isn't also
+   scaled down by --mullet-card-opacity (a translucent card fading out
+   shouldn't lose its highlight faster than its fill). Transparent for
+   the 'solid' card style (see cardStyle.ts), so this is a no-op there. */
+.mullet-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(180deg, var(--mullet-card-highlight), transparent 45%);
+  pointer-events: none;
 }

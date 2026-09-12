@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { ThemeTokens } from '../shared/themes/tokens';
 import { useShapeData } from './useShapeData';
 import './BottomBar.css';
@@ -23,7 +24,17 @@ export default function BottomBar({ theme, screenCount, activeScreen, reconnecti
   const alert = weather?.alert ? String(weather.alert) : null;
 
   return (
-    <div className="display-bottom-bar" style={{ color: theme.textColor, fontFamily: theme.fontFamily }}>
+    <div
+      className="display-bottom-bar"
+      style={
+        {
+          color: theme.textColor,
+          fontFamily: theme.fontFamily,
+          '--mullet-success': theme.successColor,
+          '--mullet-warning': theme.warningColor,
+        } as CSSProperties
+      }
+    >
       {alert && (
         <div className="bb-alert">
           <span className="bb-alert-dot" />

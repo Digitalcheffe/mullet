@@ -12,17 +12,18 @@
 }
 
 .clock-time {
-  font-size: 2em;
+  font-family: var(--mullet-heading-font);
+  font-size: var(--mullet-font-lg);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
 .clock-compact .clock-time {
-  font-size: 1.4em;
+  font-size: calc(var(--mullet-font-lg) * 0.7);
 }
 
 .clock-date {
-  font-size: 0.85em;
+  font-size: var(--mullet-font-sm);
   opacity: 0.7;
 }

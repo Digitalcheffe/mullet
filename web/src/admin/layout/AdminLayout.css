@@ -1,6 +1,15 @@
 .admin-layout {
   display: flex;
-  min-height: 100svh;
+  /* A hard height, not min-height -- .admin-content's `overflow: auto`
+     below only actually engages (and `position: sticky` inside it only
+     works correctly) when this outer frame is capped at exactly the
+     viewport height, forcing the *content* area to scroll internally
+     rather than the whole window. With min-height, this box could grow
+     taller than the viewport and the window itself would scroll instead,
+     which left .admin-content's own scroll container inert and its
+     sticky descendants (the Theme editor's Live Preview panel) computing
+     against a containing block that was itself sliding off-screen. */
+  height: 100svh;
 }
 
 .admin-sidebar {
@@ -12,6 +21,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow-y: auto;
 }
 
 .admin-logo {
@@ -22,10 +32,9 @@
 }
 
 .admin-logo-mark {
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
-  background: var(--accent);
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
   flex: none;
 }
 

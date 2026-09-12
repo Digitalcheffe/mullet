@@ -28,7 +28,8 @@
 }
 
 .wc-temp {
-  font-size: 1.8em;
+  font-family: var(--mullet-heading-font);
+  font-size: var(--mullet-font-lg);
   font-weight: 700;
   line-height: 1;
 }
@@ -42,14 +43,16 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  font-size: 0.8em;
+  font-size: var(--mullet-font-sm);
   opacity: 0.85;
 }
 
 .wc-compact .wc-main {
   gap: 6px;
 }
-.wc-compact .wc-glyph,
-.wc-compact .wc-temp {
+.wc-compact .wc-glyph {
   font-size: 1.3em;
+}
+.wc-compact .wc-temp {
+  font-size: calc(var(--mullet-font-lg) * 0.7);
 }

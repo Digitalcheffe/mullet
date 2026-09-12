@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import type { ThemeTokens } from '../../shared/themes/tokens';
+import { FONT_OPTIONS } from '../../shared/themes/fontOptions';
+import GradientStopEditor from './GradientStopEditor';
 import './ThemeTokenFields.css';
 
 type ThemeTokenKey = keyof ThemeTokens;
@@ -8,10 +10,18 @@ const ALL_FIELDS: ThemeTokenKey[] = [
   'background',
   'cardBackground',
   'cardBorder',
+  'cardStyle',
   'textColor',
   'accentColor',
+  'successColor',
+  'warningColor',
+  'errorColor',
+  'infoColor',
   'fontFamily',
+  'headingFontFamily',
   'fontSize',
+  'fontSizeSmall',
+  'fontSizeLarge',
   'borderRadius',
   'opacity',
   'blur',
@@ -65,28 +75,32 @@ export default function ThemeTokenFields({ values, onChange, fields = ALL_FIELDS
           <div className="background-field-row">
             <select
               value={values.background?.type ?? 'solid'}
-              onChange={(e) =>
-                set('background', {
-                  type: e.target.value as ThemeTokens['background']['type'],
-                  value: values.background?.value ?? '',
-                })
-              }
+              onChange={(e) => {
+                const type = e.target.value as ThemeTokens['background']['type'];
+                const current = values.background?.value ?? '';
+                // Switching into "Gradient" from a plain solid color (or
+                // an empty value) needs a real gradient string to hand
+                // the stop editor below -- otherwise it'd have nothing
+                // parseable to show. Reuses the existing color as the
+                // gradient's first stop rather than discarding it.
+                const value =
+                  type === 'gradient' && !/^linear-gradient\(/.test(current)
+                    ? `linear-gradient(160deg, ${current || '#0b0f14'} 0%, #1b2740 100%)`
+                    : current;
+                set('background', { type, value });
+              }}
             >
               <option value="solid">Solid</option>
               <option value="gradient">Gradient</option>
               <option value="image">Image URL</option>
             </select>
-            <input
-              value={values.background?.value ?? ''}
-              onChange={(e) => set('background', { type: values.background?.type ?? 'solid', value: e.target.value })}
-              placeholder={
-                values.background?.type === 'image'
-                  ? 'https://... or upload one'
-                  : values.background?.type === 'gradient'
-                    ? 'linear-gradient(...)'
-                    : '#0b0f14'
-              }
-            />
+            {values.background?.type !== 'gradient' && (
+              <input
+                value={values.background?.value ?? ''}
+                onChange={(e) => set('background', { type: values.background?.type ?? 'solid', value: e.target.value })}
+                placeholder={values.background?.type === 'image' ? 'https://... or upload one' : '#0b0f14'}
+              />
+            )}
             {values.background?.type === 'image' && onUploadImage && (
               <>
                 <button type="button" className="btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
@@ -106,6 +120,12 @@ export default function ThemeTokenFields({ values, onChange, fields = ALL_FIELDS
               </>
             )}
           </div>
+          {values.background?.type === 'gradient' && (
+            <GradientStopEditor
+              value={values.background.value}
+              onChange={(v) => set('background', { type: 'gradient', value: v })}
+            />
+          )}
           {uploadError && (
             <span className="field-help" style={{ color: 'var(--error)' }}>
               {uploadError}
@@ -118,21 +138,64 @@ export default function ThemeTokenFields({ values, onChange, fields = ALL_FIELDS
         <ColorField label="Card background" value={values.cardBackground ?? ''} onChange={(v) => set('cardBackground', v)} />
       )}
       {show('cardBorder') && <ColorField label="Card border" value={values.cardBorder ?? ''} onChange={(v) => set('cardBorder', v)} />}
+      {show('cardStyle') && (
+        <label className="field">
+          <span className="kicker">Card style</span>
+          <select value={values.cardStyle ?? 'glass'} onChange={(e) => set('cardStyle', e.target.value as ThemeTokens['cardStyle'])}>
+            <option value="glass">Glass (translucent, blurred)</option>
+            <option value="solid">Solid (flat info block)</option>
+          </select>
+        </label>
+      )}
       {show('textColor') && <ColorField label="Text color" value={values.textColor ?? ''} onChange={(v) => set('textColor', v)} />}
       {show('accentColor') && (
         <ColorField label="Accent color" value={values.accentColor ?? ''} onChange={(v) => set('accentColor', v)} />
       )}
+      {show('successColor') && (
+        <ColorField label="Success color" value={values.successColor ?? ''} onChange={(v) => set('successColor', v)} />
+      )}
+      {show('warningColor') && (
+        <ColorField label="Warning color" value={values.warningColor ?? ''} onChange={(v) => set('warningColor', v)} />
+      )}
+      {show('errorColor') && (
+        <ColorField label="Error color" value={values.errorColor ?? ''} onChange={(v) => set('errorColor', v)} />
+      )}
+      {show('infoColor') && <ColorField label="Info color" value={values.infoColor ?? ''} onChange={(v) => set('infoColor', v)} />}
 
       {show('fontFamily') && (
-        <label className="field">
-          <span className="kicker">Font family</span>
-          <input value={values.fontFamily ?? ''} onChange={(e) => set('fontFamily', e.target.value)} placeholder="system-ui, sans-serif" />
-        </label>
+        <FontSelectField label="Font family" value={values.fontFamily ?? ''} onChange={(v) => set('fontFamily', v)} />
+      )}
+      {show('headingFontFamily') && (
+        <FontSelectField
+          label="Heading font family"
+          value={values.headingFontFamily ?? ''}
+          onChange={(v) => set('headingFontFamily', v)}
+        />
       )}
       {show('fontSize') && (
         <label className="field">
           <span className="kicker">Font size</span>
           <input value={values.fontSize ?? ''} onChange={(e) => set('fontSize', e.target.value)} placeholder="16px" />
+        </label>
+      )}
+      {show('fontSizeSmall') && (
+        <label className="field">
+          <span className="kicker">Small font size</span>
+          <input
+            value={values.fontSizeSmall ?? ''}
+            onChange={(e) => set('fontSizeSmall', e.target.value)}
+            placeholder="13px"
+          />
+        </label>
+      )}
+      {show('fontSizeLarge') && (
+        <label className="field">
+          <span className="kicker">Large font size</span>
+          <input
+            value={values.fontSizeLarge ?? ''}
+            onChange={(e) => set('fontSizeLarge', e.target.value)}
+            placeholder="28px"
+          />
         </label>
       )}
       {show('borderRadius') && (
@@ -161,6 +224,30 @@ export default function ThemeTokenFields({ values, onChange, fields = ALL_FIELDS
         </label>
       )}
     </div>
+  );
+}
+
+// A <select> over FONT_OPTIONS rather than free text -- a typo'd or
+// unavailable font name used to fail silently (the browser just falls
+// back to its default with no indication anything was wrong). Still
+// shows the theme's actual value even if it isn't one of the curated
+// options (an older custom value, or one hand-edited via JSON import)
+// via a synthetic trailing option, rather than silently normalizing it
+// to the first option the moment this renders.
+function FontSelectField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const isKnown = FONT_OPTIONS.some((f) => f.value === value);
+  return (
+    <label className="field">
+      <span className="kicker">{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {!isKnown && value && <option value={value}>Custom ({value})</option>}
+        {FONT_OPTIONS.map((f) => (
+          <option key={f.value} value={f.value}>
+            {f.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -258,7 +345,11 @@ export function ColorField({
   onChange,
   helpText,
 }: {
-  label: string;
+  // Omit for a compact, label-less variant -- reused by
+  // GradientStopEditor, where each stop's own position control already
+  // identifies the row and a repeated "Color" kicker per stop would just
+  // be noise.
+  label?: string;
   value: string;
   onChange: (v: string) => void;
   helpText?: string;
@@ -337,14 +428,14 @@ export function ColorField({
     // of it -- also fired a synthetic click on the swatch button,
     // instantly re-toggling `open` closed right after each pick.
     <div className="field">
-      <span className="kicker">{label}</span>
+      {label && <span className="kicker">{label}</span>}
       <div className="color-field-row">
         <button
           ref={triggerRef}
           type="button"
           className="color-swatch"
           onClick={() => setOpen((o) => !o)}
-          aria-label={`Pick ${label.toLowerCase()}`}
+          aria-label={label ? `Pick ${label.toLowerCase()}` : 'Pick color'}
           title="Click to pick a color"
         >
           {/* Sits on top of the checkerboard on .color-swatch itself --

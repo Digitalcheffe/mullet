@@ -35,7 +35,9 @@ export default function TopBar({ displayName, theme }: Props) {
 
   return (
     <div className="display-top-bar" style={{ color: theme.textColor, fontFamily: theme.fontFamily }}>
-      <div className="tb-display-name">{displayName}</div>
+      <div className="tb-display-name" style={{ fontFamily: theme.headingFontFamily }}>
+        {displayName}
+      </div>
       <div className="tb-clock">
         <span className="tb-time">{formatTime(now)}</span>
         <span className="tb-date">{formatDate(now)}</span>

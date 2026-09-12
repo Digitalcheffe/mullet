@@ -25,6 +25,7 @@ interface Screen {
   row_height: number;
   gap: number;
   layout_mode: 'simple' | 'freeform';
+  theme_override?: Partial<ThemeTokens>;
 }
 
 interface Card {
@@ -130,6 +131,7 @@ export default function DesignerPage() {
   const [instances, setInstances] = useState<PluginInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCardId, setSelectedCardId] = useState<number | null>(null);
+  const [screenSettingsOpen, setScreenSettingsOpen] = useState(false);
   const draggingPluginRef = useRef<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -326,7 +328,11 @@ export default function DesignerPage() {
     if (!screen) return;
     const nextMode = screen.layout_mode === 'simple' ? 'freeform' : 'simple';
     const grid = nextMode === 'freeform' ? FREEFORM_GRID : SIMPLE_GRID;
-    const body = { name: screen.name, position: screen.position, layout_mode: nextMode, ...grid };
+    // theme_override is echoed back too -- PUT has no partial-update
+    // path (same reason grid fields are echoed below), so omitting it
+    // here would silently clear a screen's font override just from
+    // toggling its layout mode.
+    const body = { name: screen.name, position: screen.position, layout_mode: nextMode, ...grid, theme_override: screen.theme_override ?? null };
     await withSaveStatus(async () => {
       await apiFetch(`/api/admin/screens/${screen.id}`, {
         method: 'PUT',
@@ -358,6 +364,7 @@ export default function DesignerPage() {
         body: JSON.stringify({
           name: screen.name, position: screen.position, layout_mode: screen.layout_mode,
           columns, row_height: rowHeight, gap,
+          theme_override: screen.theme_override ?? null,
         }),
       });
       await load();
@@ -396,6 +403,34 @@ export default function DesignerPage() {
         throw new Error(await readErrorMessage(res, 'Save failed'));
       }
       setSelectedCardId(null);
+      await load();
+    });
+  }
+
+  // Mirrors handleSaveCardSettings, but for the screen-level font
+  // override (issue #87) -- echoes back every other editable field
+  // (same reason handleToggleLayoutMode/handleGridDraftBlur do) since
+  // PUT has no partial-update path.
+  async function handleSaveScreenSettings(themeOverride: Partial<ThemeTokens> | null) {
+    if (!screen) return;
+    await withSaveStatus(async () => {
+      const res = await apiFetch(`/api/admin/screens/${screen.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: screen.name,
+          position: screen.position,
+          layout_mode: screen.layout_mode,
+          columns: screen.columns,
+          row_height: screen.row_height,
+          gap: screen.gap,
+          theme_override: themeOverride,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error(await readErrorMessage(res, 'Save failed'));
+      }
+      setScreenSettingsOpen(false);
       await load();
     });
   }
@@ -476,6 +511,9 @@ export default function DesignerPage() {
         )}
         <button className="btn-secondary designer-mode-toggle" onClick={handleToggleLayoutMode}>
           {screen.layout_mode === 'simple' ? 'Switch to advanced layout' : 'Switch to simple layout'}
+        </button>
+        <button className="btn-secondary" onClick={() => setScreenSettingsOpen(true)}>
+          Screen font{screen.theme_override ? ' •' : ''}
         </button>
       </div>
 
@@ -592,6 +630,18 @@ export default function DesignerPage() {
           </div>
         </div>
       )}
+
+      {screenSettingsOpen && (
+        <div className="modal-scrim">
+          <div className="modal-panel">
+            <ScreenSettingsPanel
+              screen={screen}
+              onSave={handleSaveScreenSettings}
+              onCancel={() => setScreenSettingsOpen(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -609,6 +659,12 @@ interface CardSettingsPanelProps {
 // "Theme Cascade"): a card can nudge its own background and accent, not
 // take over the whole display's look (font, spacing, etc.).
 const CARD_OVERRIDE_FIELDS: (keyof ThemeTokens)[] = ['cardBackground', 'accentColor', 'opacity'];
+
+// The mirror image of CARD_OVERRIDE_FIELDS -- font is exactly the thing
+// card overrides deliberately exclude, and is the one thing a screen
+// override is for (issue #87): a screen can pick its own voice without
+// needing a whole new theme, but still can't touch color/spacing.
+const SCREEN_OVERRIDE_FIELDS: (keyof ThemeTokens)[] = ['fontFamily', 'headingFontFamily'];
 
 // One bound input per configSchema entry -- mirrors the shape of
 // plugindata.SetupField's own admin-side rendering (ManifestForm.tsx)
@@ -794,6 +850,70 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
       </label>
       {overrideEnabled && (
         <ThemeTokenFields values={themeOverride} onChange={(v) => setThemeOverride((prev) => ({ ...prev, ...v }))} fields={CARD_OVERRIDE_FIELDS} />
+      )}
+
+      <div className="manifest-form-actions">
+        <button type="button" className="btn-secondary" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="submit" className="btn-primary" disabled={submitting}>
+          {submitting ? 'Saving…' : 'Save changes'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+interface ScreenSettingsPanelProps {
+  screen: Screen;
+  onSave: (themeOverride: Partial<ThemeTokens> | null) => Promise<void>;
+  onCancel: () => void;
+}
+
+// The screen-level counterpart to CardSettingsPanel's own override
+// toggle, narrowed to SCREEN_OVERRIDE_FIELDS instead of
+// CARD_OVERRIDE_FIELDS (issue #87) -- no data source, config schema, or
+// position fields here, since a screen isn't a widget instance.
+function ScreenSettingsPanel({ screen, onSave, onCancel }: ScreenSettingsPanelProps) {
+  const [overrideEnabled, setOverrideEnabled] = useState(screen.theme_override != null);
+  const [themeOverride, setThemeOverride] = useState<Partial<ThemeTokens>>(screen.theme_override ?? {});
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await onSave(overrideEnabled ? themeOverride : null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="manifest-form" onSubmit={handleSubmit}>
+      <h2>Screen font</h2>
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+
+      <p className="field-help">Give this screen its own font without changing the display's whole theme.</p>
+
+      <label className="toggle-row">
+        <span>Override font for this screen</span>
+        <input type="checkbox" checked={overrideEnabled} onChange={(e) => setOverrideEnabled(e.target.checked)} />
+      </label>
+      {overrideEnabled && (
+        <ThemeTokenFields
+          values={themeOverride}
+          onChange={(v) => setThemeOverride((prev) => ({ ...prev, ...v }))}
+          fields={SCREEN_OVERRIDE_FIELDS}
+        />
       )}
 
       <div className="manifest-form-actions">

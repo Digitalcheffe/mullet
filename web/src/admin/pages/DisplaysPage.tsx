@@ -28,6 +28,10 @@ interface Screen {
   row_height: number;
   gap: number;
   layout_mode: 'simple' | 'freeform';
+  // A screen-level font override (issue #87), configured in the
+  // Designer -- opaque here, just echoed back on every update so this
+  // page's own PUT calls (rename, reorder) don't clear it.
+  theme_override?: unknown;
 }
 
 interface DisplayFormValues {
@@ -138,13 +142,13 @@ export default function DisplaysPage() {
     loadDisplays();
   }
 
-  // existing is only passed for an edit -- its grid fields are echoed
-  // straight back so a rename doesn't reset a screen's layout_mode or
-  // grid density to simple mode's defaults (handleUpdateScreen has no
-  // partial-update path, so anything omitted here reverts to the
-  // server's own default instead of staying as it was). A new screen
-  // sends none of that at all, letting the backend pick simple mode's
-  // fixed grid on its own.
+  // existing is only passed for an edit -- its grid fields (and its
+  // Designer-configured font override, issue #87) are echoed straight
+  // back so a rename doesn't reset a screen's layout_mode, grid density,
+  // or font to their defaults (handleUpdateScreen has no partial-update
+  // path, so anything omitted here reverts to the server's own default
+  // instead of staying as it was). A new screen sends none of that at
+  // all, letting the backend pick simple mode's fixed grid on its own.
   async function submitScreen(name: string, url: string, method: 'POST' | 'PUT', position: number, existing?: Screen) {
     const body: Record<string, unknown> = { name, position };
     if (existing) {
@@ -152,6 +156,7 @@ export default function DisplaysPage() {
       body.row_height = existing.row_height;
       body.gap = existing.gap;
       body.layout_mode = existing.layout_mode;
+      body.theme_override = existing.theme_override ?? null;
     }
     const res = await apiFetch(url, {
       method,
@@ -177,9 +182,11 @@ export default function DisplaysPage() {
     const a = screens[index];
     const b = screens[target];
     // Swap positions. Screens keep their own columns/row_height/gap/
-    // layout_mode -- only rotation order changes. Every field has to be
-    // re-sent (handleUpdateScreen has no partial-update path), including
-    // layout_mode -- an omitted one would silently revert to simple mode.
+    // layout_mode/theme_override -- only rotation order changes. Every
+    // field has to be re-sent (handleUpdateScreen has no partial-update
+    // path), including layout_mode -- an omitted one would silently
+    // revert to simple mode (and an omitted theme_override would clear
+    // a screen's font override).
     await Promise.all([
       apiFetch(`/api/admin/screens/${a.id}`, {
         method: 'PUT',
@@ -187,6 +194,7 @@ export default function DisplaysPage() {
         body: JSON.stringify({
           name: a.name, position: b.position,
           columns: a.columns, row_height: a.row_height, gap: a.gap, layout_mode: a.layout_mode,
+          theme_override: a.theme_override ?? null,
         }),
       }),
       apiFetch(`/api/admin/screens/${b.id}`, {
@@ -195,6 +203,7 @@ export default function DisplaysPage() {
         body: JSON.stringify({
           name: b.name, position: a.position,
           columns: b.columns, row_height: b.row_height, gap: b.gap, layout_mode: b.layout_mode,
+          theme_override: b.theme_override ?? null,
         }),
       }),
     ]);

@@ -30,18 +30,18 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  position: relative;
 }
 .color-field-row input {
   flex: 1;
   min-width: 0;
 }
 
-.color-swatch {
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
+/* A shared checkerboard, used by the swatch button and the popover's
+   larger preview to show a translucent color against, rather than
+   whatever happens to sit behind it in the page. */
+.color-swatch,
+.color-popover-preview {
   background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%),
     linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%);
   background-size: 8px 8px;
@@ -50,4 +50,197 @@
     0 4px,
     4px -4px,
     -4px 0;
+}
+
+/* The one visible swatch per color field -- a button that opens this
+   field's own popover (color-popover below), same "visible button
+   triggers a hidden/overlaid control" pattern as the "Upload image"
+   button above. The checkerboard lives on the button itself; the
+   actual color is a separate child element layered on top, since an
+   inline background on the button would replace the checkerboard
+   background-image outright instead of showing through it. */
+.color-swatch {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.color-swatch-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.color-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 220px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+/* The saturation/value field -- every shade of the currently selected
+   hue, click-and-drag to pick from directly instead of only through a
+   separate OS color dialog. Pure hue as the base color, with a
+   white-to-transparent overlay (left to right = saturation) and a
+   black-to-transparent overlay (bottom to top = value) on top -- the
+   standard SV-square construction. */
+.color-popover-sv {
+  position: relative;
+  width: 100%;
+  height: 140px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  cursor: crosshair;
+  touch-action: none;
+  background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent);
+}
+.color-popover-sv-thumb {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 1px 3px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+/* Every hue at full saturation/value -- paired with the SV field above,
+   the two together cover the full range of colors rather than needing
+   to hand off to a separate native dialog to change hue.
+
+   Qualified as ".color-popover .color-popover-hue" (not just the one
+   class) to outrank forms.css's ".field input" -- these sliders sit
+   inside a ColorField's own <label className="field">, and that rule's
+   `background: var(--surface)` shorthand silently resets
+   background-image to `none` on anything it beats, which a single
+   class selector alone does not. */
+.color-popover .color-popover-hue {
+  width: 100%;
+  height: 14px;
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  background-image: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+.color-popover-hue::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.color-popover-hue::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.color-popover-bottom-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The color actually being picked, alpha included -- separate from the
+   SV thumb (easy to lose track of against a busy gradient mid-drag) and
+   from the field's own trigger swatch (a step behind, since it only
+   reflects the value this popover has already committed). */
+.color-popover-preview {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.color-popover-preview-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.color-popover-alpha-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.color-popover-alpha-header {
+  display: flex;
+  justify-content: space-between;
+  font: 600 11px var(--font-body);
+  color: var(--ink-soft);
+}
+/* Qualified under .color-popover for the same reason as
+   .color-popover-hue above -- see its comment. */
+.color-popover .color-popover-alpha {
+  flex: 1;
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background-image:
+    linear-gradient(to right, rgb(var(--alpha-rgb) / 0), rgb(var(--alpha-rgb) / 1)),
+    linear-gradient(45deg, #ccc 25%, transparent 25%),
+    linear-gradient(-45deg, #ccc 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ccc 75%),
+    linear-gradient(-45deg, transparent 75%, #ccc 75%);
+  background-size:
+    100% 100%,
+    8px 8px,
+    8px 8px,
+    8px 8px,
+    8px 8px;
+  background-position:
+    0 0,
+    0 0,
+    0 4px,
+    4px -4px,
+    -4px 0;
+}
+.color-popover-alpha::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.color-popover-alpha::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }

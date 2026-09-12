@@ -4,7 +4,7 @@ import ReactGridLayout, { useContainerWidth, type Layout, type LayoutItem } from
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useApiFetch } from '../auth/useApiFetch';
-import ThemeTokenFields from '../components/ThemeTokenFields';
+import ThemeTokenFields, { ColorField } from '../components/ThemeTokenFields';
 import type { ThemeTokens } from '../../shared/themes/tokens';
 import type { ConfigField } from '../../shared/types/plugin';
 import { getUIPlugin, uiPlugins } from '../../plugins/registry';
@@ -684,11 +684,13 @@ function ConfigFieldInput({
       );
     case 'color':
       return (
-        <label className="field" key={fieldKey}>
-          <span className="kicker">{field.label}</span>
-          <input type="color" value={typeof value === 'string' ? value : '#000000'} onChange={(e) => onChange(e.target.value)} />
-          {field.helpText && <span className="field-help">{field.helpText}</span>}
-        </label>
+        <ColorField
+          key={fieldKey}
+          label={field.label}
+          value={typeof value === 'string' ? value : '#000000'}
+          onChange={onChange}
+          helpText={field.helpText}
+        />
       );
     case 'text':
     default:

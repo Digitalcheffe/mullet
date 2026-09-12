@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import './adminTheme.css';
 import './forms.css';
 import { AuthProvider, useAuth } from './auth/AuthContext';
@@ -8,8 +8,10 @@ import ClientsPage from './pages/ClientsPage';
 import Dashboard from './pages/Dashboard';
 import DesignerPage from './pages/DesignerPage';
 import DisplaysPage from './pages/DisplaysPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import LoginPage from './pages/LoginPage';
 import PluginsPage from './pages/PluginsPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import SettingsPage from './pages/SettingsPage';
 import SetupWizard from './pages/SetupWizard';
 import ThemeEditorPage from './pages/ThemeEditorPage';
@@ -32,6 +34,7 @@ interface SetupStatus {
 
 function AdminShell() {
   const { isAuthenticated, username, logout } = useAuth();
+  const location = useLocation();
   // null while the first-run check is in flight.
   const [status, setStatus] = useState<SetupStatus | null>(null);
 
@@ -41,6 +44,15 @@ function AdminShell() {
       .then((body: SetupStatus) => setStatus(body))
       .catch(() => setStatus({ required: false }));
   }, []);
+
+  // Reachable regardless of session or first-run state -- a locked-out
+  // admin has no session to check, by definition.
+  if (location.pathname === '/admin/forgot-password') {
+    return <ForgotPasswordPage />;
+  }
+  if (location.pathname === '/admin/reset-password') {
+    return <ResetPasswordPage />;
+  }
 
   if (status === null) {
     return <p>Loading…</p>;

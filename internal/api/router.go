@@ -47,11 +47,21 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	mux.HandleFunc("GET /api/admin/setup", handleSetupStatus(sqldb, authDisabled))
 	mux.HandleFunc("POST /api/admin/setup", handleSetup(sqldb, jwtSecret))
 
+	// Password reset (issue #78) -- public and unauthenticated by
+	// necessity, same reasoning as login/setup above: this exists for
+	// someone who's already locked out and has no session to present.
+	mux.HandleFunc("POST /api/admin/forgot-password", handleForgotPassword(sqldb))
+	mux.HandleFunc("POST /api/admin/reset-password", handleResetPassword(sqldb))
+
 	adminMux := http.NewServeMux()
-	adminMux.HandleFunc("GET /api/admin/me", handleWhoAmI)
+	adminMux.HandleFunc("GET /api/admin/me", handleWhoAmI(sqldb))
+	adminMux.HandleFunc("PUT /api/admin/account/email", handleUpdateAccountEmail(sqldb))
 	adminMux.HandleFunc("GET /api/admin/dashboard", handleDashboard(sqldb, info))
 	adminMux.HandleFunc("GET /api/admin/settings", handleGetSettings(sqldb, info))
 	adminMux.HandleFunc("PUT /api/admin/settings", handlePutSettings(sqldb))
+	adminMux.HandleFunc("GET /api/admin/settings/smtp", handleGetSMTPConfig(sqldb))
+	adminMux.HandleFunc("PUT /api/admin/settings/smtp", handlePutSMTPConfig(sqldb))
+	adminMux.HandleFunc("POST /api/admin/settings/smtp/test", handleTestSMTP(sqldb))
 	adminMux.HandleFunc("GET /api/admin/plugins", handleListPlugins(registry))
 	adminMux.HandleFunc("GET /api/admin/plugins/instances", handleListPluginInstances(sqldb, registry))
 	adminMux.HandleFunc("POST /api/admin/plugins/instances", handleCreatePluginInstance(sqldb, registry, sched))

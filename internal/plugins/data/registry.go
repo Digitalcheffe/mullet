@@ -103,14 +103,9 @@ var Default = NewRegistry()
 // Register adds p to Default.
 func Register(p DataPlugin) error { return Default.Register(p) }
 
-// List returns every plugin registered in Default.
-func List() []DataPlugin { return Default.List() }
-
-// Get returns the plugin registered under id in Default, if any.
+// Get returns the plugin registered under id in Default, if any -- used
+// by a data plugin's own tests to fetch itself back out of Default
+// after its init() registers it. Every runtime caller instead holds an
+// explicit *Registry (see Registry.List/Registry.WithPlugin), so there
+// are no package-level List/WithPlugin wrappers here to match.
 func Get(id string) (DataPlugin, bool) { return Default.Get(id) }
-
-// WithPlugin calls fn with the plugin registered under id in Default,
-// serialized per plugin ID. See Registry.WithPlugin.
-func WithPlugin(id string, fn func(DataPlugin) error) (bool, error) {
-	return Default.WithPlugin(id, fn)
-}

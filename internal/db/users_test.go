@@ -73,3 +73,76 @@ func TestGetUserMissingReturnsErrNotFound(t *testing.T) {
 		t.Errorf("SetUserPasswordHash(missing) = %v, want ErrNotFound", err)
 	}
 }
+
+func TestCreateAndListUsers(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	if count, err := CountUsers(sqldb); err != nil || count != 0 {
+		t.Fatalf("CountUsers (empty) = %d, %v, want 0, nil", count, err)
+	}
+
+	first, err := CreateUser(sqldb, "alice", "hash1")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if first.Username != "alice" || first.ID == 0 {
+		t.Errorf("CreateUser = %+v, want a real id and username alice", first)
+	}
+
+	if _, err := CreateUser(sqldb, "bob", "hash2"); err != nil {
+		t.Fatalf("CreateUser (second): %v", err)
+	}
+
+	if count, err := CountUsers(sqldb); err != nil || count != 2 {
+		t.Fatalf("CountUsers = %d, %v, want 2, nil", count, err)
+	}
+
+	users, err := ListUsers(sqldb)
+	if err != nil {
+		t.Fatalf("ListUsers: %v", err)
+	}
+	if len(users) != 2 || users[0].Username != "alice" || users[1].Username != "bob" {
+		t.Errorf("ListUsers = %+v, want [alice, bob] in creation order", users)
+	}
+}
+
+func TestCreateUserDuplicateUsernameReturnsErrUsernameTaken(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	if _, err := CreateUser(sqldb, "alice", "hash1"); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if _, err := CreateUser(sqldb, "alice", "hash2"); !errors.Is(err, ErrUsernameTaken) {
+		t.Errorf("CreateUser (duplicate) = %v, want ErrUsernameTaken", err)
+	}
+}
+
+func TestDeleteUser(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	alice, err := CreateUser(sqldb, "alice", "hash1")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	bob, err := CreateUser(sqldb, "bob", "hash2")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	// Refuses to remove the last account -- with two, either can go.
+	if err := DeleteUser(sqldb, alice.ID); err != nil {
+		t.Fatalf("DeleteUser (alice, two remain): %v", err)
+	}
+
+	if err := DeleteUser(sqldb, bob.ID); !errors.Is(err, ErrLastAdmin) {
+		t.Errorf("DeleteUser (bob, last one) = %v, want ErrLastAdmin", err)
+	}
+
+	if count, err := CountUsers(sqldb); err != nil || count != 1 {
+		t.Fatalf("CountUsers after refused delete = %d, %v, want 1, nil (bob must still exist)", count, err)
+	}
+
+	if err := DeleteUser(sqldb, 9999); !errors.Is(err, ErrNotFound) {
+		t.Errorf("DeleteUser(missing) = %v, want ErrNotFound", err)
+	}
+}

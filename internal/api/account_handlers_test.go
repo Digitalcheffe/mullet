@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -63,5 +64,50 @@ func TestUpdateAccountEmailAllowsClearing(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &me)
 	if me.Email != nil {
 		t.Errorf("email = %v, want nil after clearing", me.Email)
+	}
+}
+
+func TestUpdateAccountPasswordRoundTrip(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+
+	body, _ := json.Marshal(updateAccountPasswordRequest{CurrentPassword: "s3cret", NewPassword: "newpassword1"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/account/password", body))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204 (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	newLoginBody, _ := json.Marshal(loginRequest{Username: "admin", Password: "newpassword1"})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/admin/login", bytes.NewReader(newLoginBody)))
+	if rec.Code != http.StatusOK {
+		t.Errorf("login with new password: status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	oldLoginBody, _ := json.Marshal(loginRequest{Username: "admin", Password: "s3cret"})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/admin/login", bytes.NewReader(oldLoginBody)))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("login with old password: status = %d, want 401 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateAccountPasswordRejectsWrongCurrentPassword(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	body, _ := json.Marshal(updateAccountPasswordRequest{CurrentPassword: "wrong-password", NewPassword: "newpassword1"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/account/password", body))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateAccountPasswordRejectsShortNewPassword(t *testing.T) {
+	router, _ := newTestRouter(t, nil)
+	body, _ := json.Marshal(updateAccountPasswordRequest{CurrentPassword: "s3cret", NewPassword: "short"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, authedRequest(t, http.MethodPut, "/api/admin/account/password", body))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 (body: %s)", rec.Code, rec.Body.String())
 	}
 }

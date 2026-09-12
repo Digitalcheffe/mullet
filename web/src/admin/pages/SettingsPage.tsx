@@ -111,6 +111,7 @@ export default function SettingsPage() {
       </div>
 
       <AccountSection apiFetch={apiFetch} />
+      <UsersSection apiFetch={apiFetch} />
       <SMTPSection apiFetch={apiFetch} />
     </div>
   );
@@ -184,6 +185,245 @@ function AccountSection({ apiFetch }: { apiFetch: ReturnType<typeof useApiFetch>
               Failed to save.
             </span>
           )}
+        </div>
+      </form>
+
+      <PasswordChangeForm apiFetch={apiFetch} />
+    </div>
+  );
+}
+
+function PasswordChangeForm({ apiFetch }: { apiFetch: ReturnType<typeof useApiFetch> }) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [status, setStatus] = useState<SaveStatus>('idle');
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (newPassword !== confirmPassword) {
+      setError('New passwords do not match.');
+      setStatus('error');
+      return;
+    }
+    setStatus('saving');
+    try {
+      const res = await apiFetch('/api/admin/account/password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      });
+      if (!res.ok) {
+        setError((await res.text()) || 'Failed to change password.');
+        setStatus('error');
+        return;
+      }
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setStatus('saved');
+    } catch {
+      setError('Could not reach the server.');
+      setStatus('error');
+    }
+  }
+
+  return (
+    <form className="settings-form" onSubmit={handleSubmit}>
+      <span className="kicker">Change password</span>
+      <label className="field">
+        <span className="kicker">Current password</span>
+        <input
+          type="password"
+          value={currentPassword}
+          onChange={(e) => {
+            setCurrentPassword(e.target.value);
+            setStatus('idle');
+          }}
+          required
+        />
+      </label>
+      <label className="field">
+        <span className="kicker">New password</span>
+        <input
+          type="password"
+          value={newPassword}
+          onChange={(e) => {
+            setNewPassword(e.target.value);
+            setStatus('idle');
+          }}
+          required
+          minLength={8}
+        />
+      </label>
+      <label className="field">
+        <span className="kicker">Confirm new password</span>
+        <input
+          type="password"
+          value={confirmPassword}
+          onChange={(e) => {
+            setConfirmPassword(e.target.value);
+            setStatus('idle');
+          }}
+          required
+          minLength={8}
+        />
+      </label>
+      <div className="settings-form-actions">
+        <button type="submit" className="btn-primary" disabled={status === 'saving'}>
+          {status === 'saving' ? 'Changing…' : 'Change password'}
+        </button>
+        {status === 'saved' && <span className="save-note ok">Password changed.</span>}
+        {status === 'error' && (
+          <span className="save-note error" role="alert">
+            {error}
+          </span>
+        )}
+      </div>
+    </form>
+  );
+}
+
+interface AdminUser {
+  id: number;
+  username: string;
+  email: string | null;
+  created_at: string;
+}
+
+function UsersSection({ apiFetch }: { apiFetch: ReturnType<typeof useApiFetch> }) {
+  const [users, setUsers] = useState<AdminUser[] | null>(null);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [status, setStatus] = useState<SaveStatus>('idle');
+  const [error, setError] = useState<string | null>(null);
+
+  function loadUsers() {
+    return apiFetch('/api/admin/users')
+      .then((res) => res.json())
+      .then((body: AdminUser[]) => setUsers(body));
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/api/admin/users')
+      .then((res) => res.json())
+      .then((body: AdminUser[]) => {
+        if (!cancelled) setUsers(body);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch]);
+
+  async function handleAdd(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setStatus('saving');
+    try {
+      const res = await apiFetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!res.ok) {
+        setError((await res.text()) || 'Failed to add account.');
+        setStatus('error');
+        return;
+      }
+      setUsername('');
+      setPassword('');
+      setStatus('saved');
+      await loadUsers();
+    } catch {
+      setError('Could not reach the server.');
+      setStatus('error');
+    }
+  }
+
+  async function handleRemove(id: number) {
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        setError((await res.text()) || 'Failed to remove account.');
+        return;
+      }
+      await loadUsers();
+    } catch {
+      setError('Could not reach the server.');
+    }
+  }
+
+  if (!users) {
+    return null;
+  }
+
+  return (
+    <div className="settings-card">
+      <h2>Users</h2>
+      <p className="settings-form-help">
+        Every admin account has equal access -- there are no permission levels.
+      </p>
+      {error && (
+        <span className="save-note error" role="alert">
+          {error}
+        </span>
+      )}
+
+      <ul className="users-list">
+        {users.map((u) => (
+          <li key={u.id} className="users-list-row">
+            <div>
+              <div className="users-list-username">{u.username}</div>
+              <div className="users-list-meta">Added {new Date(u.created_at).toLocaleDateString()}</div>
+            </div>
+            <button
+              type="button"
+              className="btn-danger"
+              onClick={() => handleRemove(u.id)}
+              disabled={users.length <= 1}
+              title={users.length <= 1 ? "Can't remove the last remaining admin account" : undefined}
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <form className="settings-form" onSubmit={handleAdd}>
+        <span className="kicker">Add an admin</span>
+        <label className="field">
+          <span className="kicker">Username</span>
+          <input
+            value={username}
+            onChange={(e) => {
+              setUsername(e.target.value);
+              setStatus('idle');
+            }}
+            required
+          />
+        </label>
+        <label className="field">
+          <span className="kicker">Password</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setStatus('idle');
+            }}
+            required
+            minLength={8}
+          />
+        </label>
+        <div className="settings-form-actions">
+          <button type="submit" className="btn-primary" disabled={status === 'saving'}>
+            {status === 'saving' ? 'Adding…' : 'Add admin'}
+          </button>
+          {status === 'saved' && <span className="save-note ok">Added.</span>}
         </div>
       </form>
     </div>

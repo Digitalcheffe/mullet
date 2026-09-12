@@ -42,6 +42,18 @@
   min-width: 4.5em;
 }
 
+.ca-cal-pill {
+  flex-shrink: 0;
+  width: 1.5em;
+  height: 1.5em;
+  line-height: 1.5em;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 0.65em;
+  font-weight: 700;
+  text-align: center;
+}
+
 .ca-badge {
   flex-shrink: 0;
   font-size: 0.75em;
@@ -67,4 +79,28 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ca-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid currentColor;
+  opacity: 0.7;
+  font-size: 0.75em;
+}
+
+.ca-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ca-legend-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }

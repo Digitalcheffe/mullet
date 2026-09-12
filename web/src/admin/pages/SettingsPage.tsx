@@ -1,6 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
 import { useApiFetch } from '../auth/useApiFetch';
 import './SettingsPage.css';
+
+const SETTINGS_TABS = [
+  { id: 'general', label: 'General' },
+  { id: 'account', label: 'Account' },
+  { id: 'users', label: 'Users' },
+  { id: 'notifications', label: 'Notifications' },
+] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number]['id'];
 
 interface Settings {
   server_name: string;
@@ -33,6 +43,16 @@ export default function SettingsPage() {
   const [logFilePath, setLogFilePath] = useState('');
   const [status, setStatus] = useState<SaveStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const activeTab: SettingsTab = SETTINGS_TABS.some((t) => t.id === requestedTab)
+    ? (requestedTab as SettingsTab)
+    : 'general';
+
+  function selectTab(tab: SettingsTab) {
+    setSearchParams(tab === 'general' ? {} : { tab });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -81,65 +101,93 @@ export default function SettingsPage() {
     <div className="settings-page">
       <h1>Settings</h1>
 
-      <div className="settings-card">
-        <h2>Server</h2>
-        <form className="settings-form" onSubmit={handleSubmit}>
-          <label className="field">
-            <span className="kicker">Server name</span>
-            <input
-              value={serverName}
-              onChange={(e) => {
-                setServerName(e.target.value);
-                setStatus('idle');
-              }}
-              required
-            />
-          </label>
-          <label className="field">
-            <span className="kicker">Log file path</span>
-            <input
-              value={logFilePath}
-              onChange={(e) => {
-                setLogFilePath(e.target.value);
-                setStatus('idle');
-              }}
-              placeholder="Leave blank to log to stdout only"
-            />
-            <span className="field-help">
-              When set, logs are written to both stdout and this file. The path must be writable by
-              the server process.
-            </span>
-          </label>
-          <div className="settings-form-actions">
-            <button type="submit" className="btn-primary" disabled={status === 'saving'}>
-              {status === 'saving' ? 'Saving…' : 'Save'}
-            </button>
-            {status === 'saved' && <span className="save-note ok">Saved.</span>}
-            {status === 'error' && (
-              <span className="save-note error" role="alert">
-                {error}
-              </span>
-            )}
-          </div>
-        </form>
-
-        <div className="settings-readonly">
-          <div className="field">
-            <span className="kicker">Port</span>
-            <div className="readonly-value">{settings.port}</div>
-          </div>
-          <div className="field">
-            <span className="kicker">Database path</span>
-            <div className="readonly-value">{settings.db_path}</div>
-          </div>
-        </div>
+      <div className="settings-tabs" role="tablist">
+        {SETTINGS_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            className={activeTab === tab.id ? 'settings-tab active' : 'settings-tab'}
+            onClick={() => selectTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <AccountSection apiFetch={apiFetch} />
-      <UsersSection apiFetch={apiFetch} />
-      <SMTPSection apiFetch={apiFetch} />
-      <WebhooksSection apiFetch={apiFetch} />
-      <NotificationsSection apiFetch={apiFetch} />
+      {activeTab === 'general' && (
+        <div className="settings-card">
+          <h2>Server</h2>
+          <form className="settings-form" onSubmit={handleSubmit}>
+            <label className="field">
+              <span className="kicker">Server name</span>
+              <input
+                value={serverName}
+                onChange={(e) => {
+                  setServerName(e.target.value);
+                  setStatus('idle');
+                }}
+                required
+              />
+            </label>
+            <label className="field">
+              <span className="kicker">Log file path</span>
+              <input
+                value={logFilePath}
+                onChange={(e) => {
+                  setLogFilePath(e.target.value);
+                  setStatus('idle');
+                }}
+                placeholder="Leave blank to log to stdout only"
+              />
+              <span className="field-help">
+                When set, logs are written to both stdout and this file. The path must be writable
+                by the server process.
+              </span>
+            </label>
+            <div className="settings-form-actions">
+              <button type="submit" className="btn-primary" disabled={status === 'saving'}>
+                {status === 'saving' ? 'Saving…' : 'Save'}
+              </button>
+              {status === 'saved' && <span className="save-note ok">Saved.</span>}
+              {status === 'error' && (
+                <span className="save-note error" role="alert">
+                  {error}
+                </span>
+              )}
+            </div>
+          </form>
+
+          <div className="settings-readonly">
+            <div className="field">
+              <span className="kicker">Port</span>
+              <div className="readonly-value">{settings.port}</div>
+            </div>
+            <div className="field">
+              <span className="kicker">Database path</span>
+              <div className="readonly-value">{settings.db_path}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'account' && (
+        <>
+          <AccountSection apiFetch={apiFetch} />
+          <TwoFactorSection apiFetch={apiFetch} />
+        </>
+      )}
+
+      {activeTab === 'users' && <UsersSection apiFetch={apiFetch} />}
+
+      {activeTab === 'notifications' && (
+        <>
+          <SMTPSection apiFetch={apiFetch} />
+          <WebhooksSection apiFetch={apiFetch} />
+          <NotificationsSection apiFetch={apiFetch} />
+        </>
+      )}
     </div>
   );
 }
@@ -310,6 +358,274 @@ function PasswordChangeForm({ apiFetch }: { apiFetch: ReturnType<typeof useApiFe
         )}
       </div>
     </form>
+  );
+}
+
+interface TOTPStatus {
+  enabled: boolean;
+  backup_codes_remaining: number;
+}
+
+type TwoFactorStep = 'status' | 'enroll' | 'disable' | 'regenerate';
+
+function TwoFactorSection({ apiFetch }: { apiFetch: ReturnType<typeof useApiFetch> }) {
+  const [totpStatus, setTOTPStatus] = useState<TOTPStatus | null>(null);
+  const [step, setStep] = useState<TwoFactorStep>('status');
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
+
+  function reloadStatus() {
+    return apiFetch('/api/admin/account/totp')
+      .then((res) => res.json())
+      .then((body: TOTPStatus) => setTOTPStatus(body));
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/api/admin/account/totp')
+      .then((res) => res.json())
+      .then((body: TOTPStatus) => {
+        if (!cancelled) setTOTPStatus(body);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch]);
+
+  // Enrollment step's own state.
+  const [secret, setSecret] = useState('');
+  const [authURL, setAuthURL] = useState('');
+  const [enrollLoaded, setEnrollLoaded] = useState(false);
+  const [code, setCode] = useState('');
+  const [enrollError, setEnrollError] = useState<string | null>(null);
+  const [enrollSubmitting, setEnrollSubmitting] = useState(false);
+
+  async function startEnroll() {
+    setStep('enroll');
+    setEnrollLoaded(false);
+    setEnrollError(null);
+    setCode('');
+    const res = await apiFetch('/api/admin/account/totp/enroll', { method: 'POST' });
+    if (!res.ok) {
+      setEnrollError((await res.text()) || 'Failed to start enrollment.');
+      setEnrollLoaded(true);
+      return;
+    }
+    const body: { secret: string; auth_url: string } = await res.json();
+    setSecret(body.secret);
+    setAuthURL(body.auth_url);
+    setEnrollLoaded(true);
+  }
+
+  async function confirmEnroll(e: FormEvent) {
+    e.preventDefault();
+    setEnrollError(null);
+    setEnrollSubmitting(true);
+    try {
+      const res = await apiFetch('/api/admin/account/totp/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      if (!res.ok) {
+        setEnrollError((await res.text()) || 'That code didn’t match.');
+        return;
+      }
+      const body: { backup_codes: string[] } = await res.json();
+      setBackupCodes(body.backup_codes);
+      await reloadStatus();
+      setStep('status');
+    } catch {
+      setEnrollError('Could not reach the server.');
+    } finally {
+      setEnrollSubmitting(false);
+    }
+  }
+
+  // Disable / regenerate steps share a "confirm with current password"
+  // form -- both are security-lowering actions.
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+
+  async function submitPasswordConfirm(e: FormEvent) {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordSubmitting(true);
+    try {
+      if (step === 'disable') {
+        const res = await apiFetch('/api/admin/account/totp', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password }),
+        });
+        if (!res.ok) {
+          setPasswordError((await res.text()) || 'Failed to disable.');
+          return;
+        }
+        await reloadStatus();
+      } else if (step === 'regenerate') {
+        const res = await apiFetch('/api/admin/account/totp/backup-codes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password }),
+        });
+        if (!res.ok) {
+          setPasswordError((await res.text()) || 'Failed to regenerate.');
+          return;
+        }
+        const body: { backup_codes: string[] } = await res.json();
+        setBackupCodes(body.backup_codes);
+      }
+      setPassword('');
+      setStep('status');
+    } catch {
+      setPasswordError('Could not reach the server.');
+    } finally {
+      setPasswordSubmitting(false);
+    }
+  }
+
+  function cancelStep() {
+    setStep('status');
+    setPassword('');
+    setPasswordError(null);
+    setEnrollError(null);
+  }
+
+  if (!totpStatus) {
+    return null;
+  }
+
+  return (
+    <div className="settings-card">
+      <h2>Two-factor authentication</h2>
+
+      {backupCodes && (
+        <div className="totp-backup-codes">
+          <p className="settings-form-help">
+            Save these backup codes somewhere safe -- each works once, and this is the only time
+            they'll be shown. Use one to sign in if you lose access to your authenticator app.
+          </p>
+          <ul className="backup-codes-list">
+            {backupCodes.map((c) => (
+              <li key={c}>{c}</li>
+            ))}
+          </ul>
+          <div className="settings-form-actions">
+            <button type="button" className="btn-primary" onClick={() => setBackupCodes(null)}>
+              I've saved these codes
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 'status' && !backupCodes && (
+        <>
+          <p className="settings-form-help">
+            {totpStatus.enabled
+              ? `Enabled. ${totpStatus.backup_codes_remaining} backup code${totpStatus.backup_codes_remaining === 1 ? '' : 's'} remaining.`
+              : "Not enabled. Adds a 6-digit code from an authenticator app to sign-in, on top of your password."}
+          </p>
+          <div className="settings-form-actions">
+            {!totpStatus.enabled && (
+              <button type="button" className="btn-primary" onClick={startEnroll}>
+                Enable
+              </button>
+            )}
+            {totpStatus.enabled && (
+              <>
+                <button type="button" className="btn-secondary" onClick={() => setStep('regenerate')}>
+                  Regenerate backup codes
+                </button>
+                <button type="button" className="btn-danger" onClick={() => setStep('disable')}>
+                  Disable
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
+
+      {step === 'enroll' && (
+        <form className="settings-form" onSubmit={confirmEnroll}>
+          {!enrollLoaded && <p>Loading…</p>}
+          {enrollLoaded && enrollError && !secret && (
+            <p className="form-error" role="alert">
+              {enrollError}
+            </p>
+          )}
+          {enrollLoaded && secret && (
+            <>
+              <p className="settings-form-help">
+                Scan this with your authenticator app (Google Authenticator, Authy, 1Password, ...),
+                or enter the key manually.
+              </p>
+              <QRCodeSVG value={authURL} size={180} />
+              <label className="field">
+                <span className="kicker">Manual entry key</span>
+                <div className="readonly-value">{secret}</div>
+              </label>
+              <label className="field">
+                <span className="kicker">Enter the 6-digit code to confirm</span>
+                <input
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  required
+                  autoFocus
+                  autoComplete="one-time-code"
+                />
+              </label>
+              {enrollError && (
+                <p className="form-error" role="alert">
+                  {enrollError}
+                </p>
+              )}
+              <div className="settings-form-actions">
+                <button type="submit" className="btn-primary" disabled={enrollSubmitting}>
+                  {enrollSubmitting ? 'Confirming…' : 'Confirm'}
+                </button>
+                <button type="button" className="btn-secondary" onClick={cancelStep}>
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+        </form>
+      )}
+
+      {(step === 'disable' || step === 'regenerate') && (
+        <form className="settings-form" onSubmit={submitPasswordConfirm}>
+          <p className="settings-form-help">
+            {step === 'disable'
+              ? 'Enter your current password to disable two-factor authentication.'
+              : 'Enter your current password to regenerate backup codes -- the old ones stop working immediately.'}
+          </p>
+          <label className="field">
+            <span className="kicker">Current password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoFocus
+            />
+          </label>
+          {passwordError && (
+            <p className="form-error" role="alert">
+              {passwordError}
+            </p>
+          )}
+          <div className="settings-form-actions">
+            <button type="submit" className="btn-danger" disabled={passwordSubmitting}>
+              {passwordSubmitting ? 'Working…' : step === 'disable' ? 'Disable' : 'Regenerate'}
+            </button>
+            <button type="button" className="btn-secondary" onClick={cancelStep}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }
 

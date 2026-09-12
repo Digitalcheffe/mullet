@@ -15,8 +15,13 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
+// loginResponse carries either a real session Token, or (when the
+// account has TOTP enabled) MFARequired plus a short-lived PendingToken
+// to exchange for one via POST /api/admin/mfa/verify -- never both.
 type loginResponse struct {
-	Token string `json:"token"`
+	Token        string `json:"token,omitempty"`
+	MFARequired  bool   `json:"mfa_required,omitempty"`
+	PendingToken string `json:"pending_token,omitempty"`
 }
 
 type setupStatusResponse struct {
@@ -108,12 +113,8 @@ func handleLogin(sqldb *sql.DB, jwtSecret []byte) http.HandlerFunc {
 			return
 		}
 
-		var userID int
-		var passwordHash string
-		err := sqldb.QueryRow(
-			`SELECT id, password_hash FROM users WHERE username = ?`, req.Username,
-		).Scan(&userID, &passwordHash)
-		if errors.Is(err, sql.ErrNoRows) {
+		user, err := db.GetUserByUsername(sqldb, req.Username)
+		if errors.Is(err, db.ErrNotFound) {
 			http.Error(w, "invalid credentials", http.StatusUnauthorized)
 			return
 		}
@@ -122,12 +123,27 @@ func handleLogin(sqldb *sql.DB, jwtSecret []byte) http.HandlerFunc {
 			return
 		}
 
-		if err := auth.VerifyPassword(passwordHash, req.Password); err != nil {
+		if err := auth.VerifyPassword(user.PasswordHash, req.Password); err != nil {
 			http.Error(w, "invalid credentials", http.StatusUnauthorized)
 			return
 		}
 
-		token, err := auth.IssueToken(jwtSecret, userID, req.Username)
+		// Password verified. If TOTP is enabled (issue #114), that's not
+		// a full login yet -- issue a short-lived pending token the
+		// client exchanges for a real session at /api/admin/mfa/verify,
+		// rather than the session token itself.
+		if user.TOTPEnabled {
+			pending, err := auth.IssuePendingMFAToken(jwtSecret, user.ID, user.Username)
+			if err != nil {
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(loginResponse{MFARequired: true, PendingToken: pending})
+			return
+		}
+
+		token, err := auth.IssueToken(jwtSecret, user.ID, user.Username)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return

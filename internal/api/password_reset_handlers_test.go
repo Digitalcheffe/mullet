@@ -136,6 +136,68 @@ func TestResetPasswordActuallyChangesPassword(t *testing.T) {
 	}
 }
 
+func TestResetPasswordWithDisableMFATurnsOffTOTP(t *testing.T) {
+	router, sqldb := newTestRouter(t, nil)
+	enrollAndConfirmTOTP(t, router)
+
+	user, err := db.GetUserByUsername(sqldb, "admin")
+	if err != nil {
+		t.Fatalf("looking up seeded admin: %v", err)
+	}
+	token, err := db.CreatePasswordResetToken(sqldb, user.ID)
+	if err != nil {
+		t.Fatalf("creating reset token: %v", err)
+	}
+
+	body, _ := json.Marshal(resetPasswordRequest{Token: token, NewPassword: "brandnewpassword", DisableMFA: true})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/admin/reset-password", bytes.NewReader(body)))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("reset-password: status = %d, want 204 (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	// Logging in no longer requires MFA, and goes straight to a real
+	// session token.
+	loginBody, _ := json.Marshal(loginRequest{Username: "admin", Password: "brandnewpassword"})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/admin/login", bytes.NewReader(loginBody)))
+	var loginResp loginResponse
+	json.Unmarshal(rec.Body.Bytes(), &loginResp)
+	if loginResp.MFARequired || loginResp.Token == "" {
+		t.Errorf("login after disable_mfa reset = %+v, want a real session token with mfa_required=false", loginResp)
+	}
+}
+
+func TestResetPasswordWithoutDisableMFALeavesTOTPEnabled(t *testing.T) {
+	router, sqldb := newTestRouter(t, nil)
+	enrollAndConfirmTOTP(t, router)
+
+	user, err := db.GetUserByUsername(sqldb, "admin")
+	if err != nil {
+		t.Fatalf("looking up seeded admin: %v", err)
+	}
+	token, err := db.CreatePasswordResetToken(sqldb, user.ID)
+	if err != nil {
+		t.Fatalf("creating reset token: %v", err)
+	}
+
+	body, _ := json.Marshal(resetPasswordRequest{Token: token, NewPassword: "brandnewpassword"})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/admin/reset-password", bytes.NewReader(body)))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("reset-password: status = %d, want 204 (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	loginBody, _ := json.Marshal(loginRequest{Username: "admin", Password: "brandnewpassword"})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/admin/login", bytes.NewReader(loginBody)))
+	var loginResp loginResponse
+	json.Unmarshal(rec.Body.Bytes(), &loginResp)
+	if !loginResp.MFARequired || loginResp.Token != "" {
+		t.Errorf("login after a plain reset = %+v, want mfa_required=true (2FA untouched)", loginResp)
+	}
+}
+
 // configureFakeSMTP saves a working SMTP config pointed at a local fake
 // server, so forgot-password's send step can succeed in a test.
 func configureFakeSMTP(t *testing.T, router http.Handler) {

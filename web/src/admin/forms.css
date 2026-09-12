@@ -110,6 +110,13 @@
 }
 
 .auth-secondary-link {
+  /* Also used on a <button> (issue #114's "Back to sign in" during MFA
+     verification), unlike its original <Link>-only use -- reset button
+     chrome so both render identically. */
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
   font: 600 13px var(--font-body);
   color: var(--accent);
   text-align: center;

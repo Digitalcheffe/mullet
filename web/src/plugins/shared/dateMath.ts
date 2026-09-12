@@ -14,3 +14,11 @@ export function parseLocalDate(raw: string): Date {
   const [y, m, d] = raw.split('-').map(Number);
   return new Date(y, m - 1, d);
 }
+
+// A stable string key for grouping instants into the viewer's local
+// calendar day (not UTC's) -- a kiosk display's "today"/"this week"
+// means the viewer's wall-clock day, and two Dates on the same local
+// day must produce the same key regardless of their exact time.
+export function localDayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}

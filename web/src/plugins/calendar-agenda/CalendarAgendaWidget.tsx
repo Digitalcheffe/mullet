@@ -3,6 +3,7 @@ import type { UIPlugin, WidgetProps } from '../../shared/types/plugin';
 import { cardStyle } from '../shared/cardStyle';
 import { colorForID } from '../shared/idColor';
 import { parseSQLDateTime } from '../shared/sqlDateTime';
+import { localDayKey } from '../shared/dateMath';
 import { useShapeData } from '../../display/useShapeData';
 import './CalendarAgendaWidget.css';
 
@@ -35,14 +36,6 @@ interface CalendarRow {
 interface Config {
   days?: number;
   showLocation?: boolean;
-}
-
-// parseSQLDateTime's result is a real instant; grouping it into a
-// calendar *day* still has to go through the viewer's local timezone,
-// not UTC's, since a kiosk display's "today" means the viewer's
-// wall-clock today.
-function localDayKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function formatTime(d: Date): string {

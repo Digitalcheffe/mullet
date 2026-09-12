@@ -27,3 +27,14 @@
   font-size: var(--mullet-font-sm);
   opacity: 0.7;
 }
+
+.clock-analog-face {
+  width: 60%;
+  max-width: 160px;
+  aspect-ratio: 1;
+}
+
+.clock-compact .clock-analog-face {
+  width: 80%;
+  max-width: 90px;
+}

@@ -15,9 +15,10 @@ export interface CardLayout {
   config: Record<string, unknown>;
   theme_override?: Partial<ThemeTokens>;
   // Optional card header (issue #145) -- absent/empty header_text means
-  // no header renders at all.
+  // no header renders at all. Always renders in its own reserved strip
+  // at the top of the card (issue #154) -- header_halign is the only
+  // alignment control.
   header_text?: string;
-  header_valign?: 'top' | 'middle' | 'bottom';
   header_halign?: 'left' | 'center' | 'right';
 }
 

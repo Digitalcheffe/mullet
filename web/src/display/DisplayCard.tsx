@@ -31,57 +31,34 @@ export default function DisplayCard({ card, theme }: Props) {
     );
   }
 
-  const valign = card.header_valign ?? 'top';
-  const showHeader = Boolean(card.header_text);
-
   return (
     <div className="display-card" style={gridStyle}>
-      {showHeader && valign === 'top' && <CardHeaderBar card={card} theme={resolvedTheme} placement="top" />}
+      {card.header_text && <CardHeader card={card} theme={resolvedTheme} />}
       <div className="display-card-body">
         <PluginBody plugin={plugin} card={card} theme={resolvedTheme} />
       </div>
-      {showHeader && valign === 'bottom' && <CardHeaderBar card={card} theme={resolvedTheme} placement="bottom" />}
-      {showHeader && valign === 'middle' && <CardHeaderOverlay card={card} theme={resolvedTheme} />}
     </div>
   );
 }
 
-// CardHeaderBar labels a card (issue #145) -- e.g. distinguishing two
-// Calendar Agenda cards for different rooms. A real flex item taking its
-// own layout space above/below the widget's body, not an overlay, so it
-// never collides with the widget's own content (a top-aligned header
-// used to sit directly on top of a Calendar Agenda card's first day
-// row).
-function CardHeaderBar({ card, theme, placement }: { card: CardLayout; theme: ThemeTokens; placement: 'top' | 'bottom' }) {
+// CardHeader labels a card (issue #145) -- e.g. distinguishing two
+// Calendar Agenda cards for different rooms. Always its own reserved row
+// at the top of the card (issue #154, dropping the earlier top/middle/
+// bottom option -- vertical placement isn't configurable, only
+// header_halign is), plain text with no background or shared card
+// chrome. The widget's body simply gets whatever space remains.
+function CardHeader({ card, theme }: { card: CardLayout; theme: ThemeTokens }) {
   const halign = card.header_halign ?? 'left';
   const style: CSSProperties = {
+    display: 'flex',
     justifyContent: halign === 'left' ? 'flex-start' : halign === 'right' ? 'flex-end' : 'center',
+    padding: '0.35em 0.6em',
     color: theme.textColor,
     fontFamily: theme.headingFontFamily,
-    background: theme.cardBackground,
   };
   return (
-    <div className={`display-card-header-bar display-card-header-bar--${placement}`} style={style}>
+    <div className="display-card-header" style={style}>
       {card.header_text}
-    </div>
-  );
-}
-
-// CardHeaderOverlay is the middle-aligned case only -- there's no
-// "reserved space" equivalent of centering a label over a card's middle
-// without splitting the widget in half, so it stays an absolutely
-// positioned watermark, with its own background chip so it stays legible
-// over whatever the widget happens to render underneath it.
-function CardHeaderOverlay({ card, theme }: { card: CardLayout; theme: ThemeTokens }) {
-  const halign = card.header_halign ?? 'left';
-  const style: CSSProperties = {
-    justifyContent: halign === 'left' ? 'flex-start' : halign === 'right' ? 'flex-end' : 'center',
-    color: theme.textColor,
-    fontFamily: theme.headingFontFamily,
-  };
-  return (
-    <div className="display-card-header-overlay" style={style}>
-      <span className="display-card-header-chip">{card.header_text}</span>
     </div>
   );
 }

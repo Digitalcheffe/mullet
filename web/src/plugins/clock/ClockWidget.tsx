@@ -106,7 +106,13 @@ function ClockComponent({ config, size, theme }: WidgetProps<unknown>) {
   const showDate = cfg.showDate !== false;
   const dateFormat = cfg.dateFormat ?? 'long';
   const customDateFormat = cfg.customDateFormat || 'MM/DD/YY';
-  const compact = size.h <= 2 || size.w <= 3;
+  // Matches minSize (w:2, h:1), not defaultSize (w:3, h:2) -- the
+  // previous threshold (h<=2 || w<=3) was wide enough to catch the
+  // widget's own default placement size, silently suppressing the date
+  // (and shrinking the analog face) even though there was no actual
+  // space problem, so "Show date" appeared to do nothing until a card
+  // was manually resized larger than default.
+  const compact = size.h <= 1 || size.w <= 2;
 
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {

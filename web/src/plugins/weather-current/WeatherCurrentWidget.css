@@ -23,7 +23,6 @@
 }
 
 .wc-glyph {
-  font-size: 1.8em;
   line-height: 1;
 }
 
@@ -49,9 +48,6 @@
 
 .wc-compact .wc-main {
   gap: 6px;
-}
-.wc-compact .wc-glyph {
-  font-size: 1.3em;
 }
 .wc-compact .wc-temp {
   font-size: calc(var(--mullet-font-lg) * 0.7);

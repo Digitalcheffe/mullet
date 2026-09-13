@@ -1,6 +1,11 @@
+import { useId } from 'react';
 import type { UIPlugin, WidgetProps } from '../../shared/types/plugin';
 import { cardStyle } from '../shared/cardStyle';
 import './MoonPhaseWidget.css';
+
+// A real lunar photo (issue #156) -- NASA/LRO mosaic, public domain --
+// rather than the flat single-color icon this widget used to draw.
+const MOON_PHOTO_URL = '/moon-full.jpg';
 
 const SYNODIC_MONTH_DAYS = 29.530588853;
 // A known new moon instant, used as the epoch for the age calculation
@@ -63,12 +68,31 @@ function moonIconPath(p: number): string {
 function MoonPhaseComponent({ theme }: WidgetProps<unknown>) {
   const p = phaseFraction(new Date());
   const style = cardStyle(theme);
+  // Unique per instance -- SVG ids are global to the document, so two
+  // Moon Phase cards on the same screen would otherwise both resolve
+  // url(#...) to whichever card's <clipPath> happened to render first.
+  const uid = useId();
+  const circleClipId = `moon-circle-${uid}`;
+  const phaseClipId = `moon-phase-${uid}`;
 
   return (
     <div className="moon-phase-widget mullet-card" style={style}>
       <svg className="moon-phase-icon" viewBox="0 0 24 24" role="img" aria-label={phaseName(p)}>
-        <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.4" />
-        <path d={moonIconPath(p)} fill="currentColor" style={{ color: theme.accentColor }} />
+        <defs>
+          <clipPath id={circleClipId}>
+            <circle cx="12" cy="12" r="10" />
+          </clipPath>
+          <clipPath id={phaseClipId}>
+            <path d={moonIconPath(p)} />
+          </clipPath>
+        </defs>
+        {/* The shadowed portion of the disc, dimmed rather than hidden --
+            a dark-side-of-the-moon hint instead of a hard edge. */}
+        <image href={MOON_PHOTO_URL} x="2" y="2" width="20" height="20" clipPath={`url(#${circleClipId})`} opacity="0.22" />
+        {/* The illuminated portion, full brightness, clipped to the same
+            lune shape the old flat icon used to fill with a solid color. */}
+        <image href={MOON_PHOTO_URL} x="2" y="2" width="20" height="20" clipPath={`url(#${phaseClipId})`} />
+        <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.25" />
       </svg>
       <div className="moon-phase-name">{phaseName(p)}</div>
     </div>

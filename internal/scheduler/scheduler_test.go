@@ -567,3 +567,70 @@ func (p *concurrencyCheckFakePlugin) Fetch(ctx context.Context) (map[string][]an
 	time.Sleep(time.Millisecond)
 	return p.fakePlugin.Fetch(ctx)
 }
+
+// markerFakePlugin reports whatever config is active *at fetch time* via
+// a "marker" key, unlike fakePlugin itself (which always returns the
+// same static row regardless of config) -- needed to reveal which
+// instance's Configure() call was actually in effect when Fetch ran.
+type markerFakePlugin struct {
+	fakePlugin
+}
+
+func (p *markerFakePlugin) Fetch(ctx context.Context) (map[string][]any, error) {
+	p.calls.Add(1)
+	marker, _ := p.lastConfig["marker"].(string)
+	return map[string][]any{
+		"weather_current": {shapes.WeatherCurrent{ID: marker, Temp: 72, Condition: "Clear", Icon: "sun"}},
+	}, nil
+}
+
+// TestTwoInstancesOfSamePluginTypeDoNotClobberEachOthersConfig guards
+// against issue #152: every instance of a plugin type shares one mutable
+// plugin object (see registry.go), and Configure() used to only be
+// (re)applied once per instance up front in Reload(), never again before
+// each tick's Fetch. That left the shared object's fields permanently
+// stuck on whichever instance was configured last, so every instance --
+// not just the last one -- ended up fetching with that instance's
+// settings. Confirmed live with two real ics-feed instances before this
+// was understood as a scheduler bug rather than a calendar-merging one.
+func TestTwoInstancesOfSamePluginTypeDoNotClobberEachOthersConfig(t *testing.T) {
+	sqldb := newTestDB(t)
+	if _, err := sqldb.Exec(
+		`INSERT INTO data_plugin_instances (id, plugin_id, instance_name, refresh_seconds, config) VALUES
+		 (1, 'openweathermap', 'Instance A', 0, '{"marker":"A"}'),
+		 (2, 'openweathermap', 'Instance B', 0, '{"marker":"B"}')`,
+	); err != nil {
+		t.Fatalf("seeding instances: %v", err)
+	}
+
+	plugin := &markerFakePlugin{fakePlugin: fakePlugin{id: "openweathermap", interval: 5 * time.Millisecond}}
+	registry := plugindata.NewRegistry()
+	if err := registry.Register(plugin); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	s := New(sqldb, registry)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Let several ticks land for both instances -- the bug is permanent
+	// once triggered, not a rare interleaving, so a handful of ticks is
+	// enough to prove it either way.
+	waitForCalls(t, &plugin.fakePlugin, 6, time.Second)
+	s.Stop()
+
+	assertShapeMarker(t, sqldb, 1, "A")
+	assertShapeMarker(t, sqldb, 2, "B")
+}
+
+func assertShapeMarker(t *testing.T, sqldb *sql.DB, instanceID int, want string) {
+	t.Helper()
+	var got string
+	if err := sqldb.QueryRow(`SELECT id FROM shape_weather_current WHERE plugin_instance_id = ?`, instanceID).Scan(&got); err != nil {
+		t.Fatalf("reading shape_weather_current for instance %d: %v", instanceID, err)
+	}
+	if got != want {
+		t.Errorf("instance %d's shape_weather_current row has id %q, want %q (it fetched using a different instance's config)", instanceID, got, want)
+	}
+}

@@ -1,6 +1,6 @@
 import type { UIPlugin, WidgetProps } from '../../shared/types/plugin';
 import { cardStyle } from '../shared/cardStyle';
-import { ConditionIcon } from '../shared/conditionIcons';
+import { ConditionIcon, type ConditionIconVariant } from '../shared/conditionIcons';
 import './WeatherForecastWidget.css';
 
 // One row from GET /api/data/weather_forecast -- field names match the
@@ -16,9 +16,21 @@ export interface WeatherForecastRow {
   fetched_at: string;
 }
 
+type IconSize = 'small' | 'medium' | 'large';
+
+// Base em size for each day's condition glyph (issue #148) -- "medium"
+// matches this widget's original fixed 1.5em, so existing cards look
+// unchanged unless someone opts into small/large.
+const ICON_SIZE_EM: Record<IconSize, number> = { small: 1, medium: 1.5, large: 3 };
+
+type Layout = 'stacked' | 'horizontal';
+
 interface Config {
   unit?: string;
   days?: number;
+  iconSize?: IconSize;
+  iconStyle?: ConditionIconVariant;
+  layout?: Layout;
 }
 
 function round(n: number): string {
@@ -35,6 +47,8 @@ function WeatherForecastComponent({ data, config, size, theme }: WidgetProps<Wea
   const cfg = config as Config;
   const unit = cfg.unit ?? '°F';
   const requestedDays = cfg.days ?? 5;
+  const iconEm = ICON_SIZE_EM[cfg.iconSize ?? 'medium'];
+  const layout = cfg.layout ?? 'stacked';
   // A narrow cell can't fit 5 day-columns legibly -- show fewer rather
   // than squeezing or scrolling. ~90 grid-px per day column is a rough
   // fit; 1 grid unit here stands for the screen's own column width,
@@ -59,12 +73,13 @@ function WeatherForecastComponent({ data, config, size, theme }: WidgetProps<Wea
 
   return (
     <div className="weather-forecast-widget mullet-card" style={style}>
-      {days.map((d) => (
-        <div className="wf-day" key={d.id}>
-          <div className="wf-label">{dayLabel(d.date)}</div>
-          <div className="wf-glyph" style={{ color: theme.accentColor }}>
-            <ConditionIcon condition={d.condition} width="1em" height="1em" />
+      {days.map((d) => {
+        const icon = (
+          <div className="wf-glyph" style={{ color: theme.accentColor, fontSize: `${iconEm}em` }}>
+            <ConditionIcon condition={d.condition} variant={cfg.iconStyle ?? 'outline'} width="1em" height="1em" />
           </div>
+        );
+        const hiLo = (
           <div className="wf-hi-lo">
             <span className="wf-high" style={{ color: theme.accentColor }}>
               {round(d.high)}
@@ -75,9 +90,30 @@ function WeatherForecastComponent({ data, config, size, theme }: WidgetProps<Wea
               {unit}
             </span>
           </div>
-          {d.precip_chance != null && d.precip_chance > 0 && <div className="wf-precip">☔ {d.precip_chance}%</div>}
-        </div>
-      ))}
+        );
+        const precip = d.precip_chance != null && d.precip_chance > 0 && <div className="wf-precip">☔ {d.precip_chance}%</div>;
+
+        if (layout === 'horizontal') {
+          return (
+            <div className="wf-day wf-day--horizontal" key={d.id}>
+              {icon}
+              <div className="wf-info">
+                <div className="wf-label">{dayLabel(d.date)}</div>
+                {hiLo}
+                {precip}
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div className="wf-day" key={d.id}>
+            <div className="wf-label">{dayLabel(d.date)}</div>
+            {icon}
+            {hiLo}
+            {precip}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -100,6 +136,34 @@ export const weatherForecastPlugin: UIPlugin<WeatherForecastRow> = {
       ],
     },
     days: { type: 'number', label: 'Days to show', default: 5 },
+    layout: {
+      type: 'select',
+      label: 'Layout',
+      default: 'stacked',
+      options: [
+        { value: 'stacked', label: 'Stacked (icon above)' },
+        { value: 'horizontal', label: 'Horizontal (icon left)' },
+      ],
+    },
+    iconSize: {
+      type: 'select',
+      label: 'Icon size',
+      default: 'medium',
+      options: [
+        { value: 'small', label: 'Small' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'large', label: 'Large' },
+      ],
+    },
+    iconStyle: {
+      type: 'select',
+      label: 'Icon style',
+      default: 'outline',
+      options: [
+        { value: 'outline', label: 'Outline' },
+        { value: 'filled', label: 'Filled / colored' },
+      ],
+    },
   },
   component: WeatherForecastComponent,
 };

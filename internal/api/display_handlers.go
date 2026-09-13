@@ -411,6 +411,10 @@ type screenRequest struct {
 	Gap           int             `json:"gap"`
 	LayoutMode    string          `json:"layout_mode"`
 	ThemeOverride json.RawMessage `json:"theme_override"`
+	// AspectRatio is a Designer-canvas preview hint (issue #162), e.g.
+	// "16:9" -- nil/empty means "Custom" (today's free-form behavior).
+	// Never constrains Columns/RowHeight/Gap.
+	AspectRatio *string `json:"aspect_ratio"`
 }
 
 type screenResponse struct {
@@ -423,13 +427,14 @@ type screenResponse struct {
 	Gap           int             `json:"gap"`
 	LayoutMode    string          `json:"layout_mode"`
 	ThemeOverride json.RawMessage `json:"theme_override,omitempty"`
+	AspectRatio   *string         `json:"aspect_ratio,omitempty"`
 }
 
 func toScreenResponse(s db.Screen) screenResponse {
 	resp := screenResponse{
 		ID: s.ID, DisplayID: s.DisplayID, Name: s.Name,
 		Position: s.Position, Columns: s.Columns, RowHeight: s.RowHeight, Gap: s.Gap,
-		LayoutMode: s.LayoutMode,
+		LayoutMode: s.LayoutMode, AspectRatio: s.AspectRatio,
 	}
 	if s.ThemeOverride != nil {
 		resp.ThemeOverride = json.RawMessage(*s.ThemeOverride)
@@ -603,7 +608,7 @@ func handleUpdateScreen(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if err := db.UpdateScreen(sqldb, id, req.Name, req.Position, columns, rowHeight, gap, layoutMode, themeOverride); errors.Is(err, db.ErrNotFound) {
+		if err := db.UpdateScreen(sqldb, id, req.Name, req.Position, columns, rowHeight, gap, layoutMode, themeOverride, req.AspectRatio); errors.Is(err, db.ErrNotFound) {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		} else if err != nil {

@@ -26,6 +26,10 @@ interface Screen {
   gap: number;
   layout_mode: 'simple' | 'freeform';
   theme_override?: Partial<ThemeTokens>;
+  // A Designer-canvas preview hint (issue #162) -- e.g. "16:9" -- absent
+  // means "Custom" (today's free-form behavior). Never constrains
+  // columns/row_height/gap, which stay independently configurable.
+  aspect_ratio?: string;
 }
 
 interface Card {
@@ -88,6 +92,18 @@ type SizePreset = 'S' | 'M' | 'L';
 const SIZE_PRESETS: SizePreset[] = ['S', 'M', 'L'];
 const SIZE_PRESET_NAMES: Record<SizePreset, string> = { S: 'Small', M: 'Medium', L: 'Large' };
 
+// Screen-preset dropdown (issue #162). These only set a CSS aspect-ratio
+// on the canvas as a sizing preview -- real display hardware varies even
+// within one ratio class, so columns/row_height/gap stay independently
+// editable no matter which preset (or "Custom") is selected.
+const ASPECT_RATIO_PRESETS: { value: string; label: string }[] = [
+  { value: '', label: 'Custom' },
+  { value: '16:9', label: '16:9 (TV / Monitor)' },
+  { value: '4:3', label: '4:3 (Tablet Landscape)' },
+  { value: '9:16', label: '9:16 (Tablet Portrait)' },
+  { value: '21:9', label: '21:9 (Ultrawide)' },
+];
+
 function clampToGrid(size: { w: number; h: number }, cols: number): { w: number; h: number } {
   return { w: Math.min(size.w, cols), h: size.h };
 }
@@ -147,6 +163,10 @@ export default function DesignerPage() {
   // actively placing cards on changes far more often than a sidebar's
   // pin state does.
   const [paletteCollapsed, setPaletteCollapsed] = useState(false);
+  // Legibility warning (issue #162) -- dismissible per selected preset;
+  // re-armed whenever the preset itself changes so switching to a
+  // different (or smaller) preset surfaces the warning again.
+  const [legibilityWarningDismissed, setLegibilityWarningDismissed] = useState(false);
   const draggingPluginRef = useRef<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -218,6 +238,25 @@ export default function DesignerPage() {
   }, [load]);
 
   const layout: Layout = useMemo(() => cards.map((c) => ({ i: String(c.id), x: c.x, y: c.y, w: c.w, h: c.h })), [cards]);
+
+  // Re-arm the legibility warning whenever the selected preset changes,
+  // so a dismissal on one preset doesn't silently suppress it on another.
+  useEffect(() => {
+    setLegibilityWarningDismissed(false);
+  }, [screen?.aspect_ratio]);
+
+  // A card counts as "at its smallest usable size" once it's at or below
+  // its own widget's declared minSize on both axes -- the same minSize
+  // the resize system already enforces as a floor, so this never flags a
+  // card the user couldn't have avoided anyway.
+  const undersizedCardCount = useMemo(() => {
+    if (!screen?.aspect_ratio || legibilityWarningDismissed) return 0;
+    return cards.filter((c) => {
+      const plugin = getUIPlugin(c.ui_plugin_id);
+      if (!plugin) return false;
+      return c.w <= plugin.minSize.w && c.h <= plugin.minSize.h;
+    }).length;
+  }, [cards, screen?.aspect_ratio, legibilityWarningDismissed]);
 
   // Persists every card whose position/size changed after a drag or
   // resize. react-grid-layout's compactor can shift more than the one
@@ -347,12 +386,34 @@ export default function DesignerPage() {
     // path (same reason grid fields are echoed below), so omitting it
     // here would silently clear a screen's font override just from
     // toggling its layout mode.
-    const body = { name: screen.name, position: screen.position, layout_mode: nextMode, ...grid, theme_override: screen.theme_override ?? null };
+    const body = { name: screen.name, position: screen.position, layout_mode: nextMode, ...grid, theme_override: screen.theme_override ?? null, aspect_ratio: screen.aspect_ratio ?? null };
     await withSaveStatus(async () => {
       await apiFetch(`/api/admin/screens/${screen.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+      });
+      await load();
+    });
+  }
+
+  // Screen-preset dropdown (issue #162) -- purely a Designer-canvas
+  // preview hint (CSS aspect-ratio on .designer-grid-wrap). Doesn't touch
+  // columns/row_height/gap, which stay independently editable regardless
+  // of which preset (or "Custom") is selected.
+  async function handleChangeAspectRatio(value: string) {
+    if (!screen) return;
+    const aspectRatio = value === '' ? null : value;
+    await withSaveStatus(async () => {
+      await apiFetch(`/api/admin/screens/${screen.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: screen.name, position: screen.position, layout_mode: screen.layout_mode,
+          columns: screen.columns, row_height: screen.row_height, gap: screen.gap,
+          theme_override: screen.theme_override ?? null,
+          aspect_ratio: aspectRatio,
+        }),
       });
       await load();
     });
@@ -380,6 +441,7 @@ export default function DesignerPage() {
           name: screen.name, position: screen.position, layout_mode: screen.layout_mode,
           columns, row_height: rowHeight, gap,
           theme_override: screen.theme_override ?? null,
+          aspect_ratio: screen.aspect_ratio ?? null,
         }),
       });
       await load();
@@ -455,6 +517,7 @@ export default function DesignerPage() {
           row_height: screen.row_height,
           gap: screen.gap,
           theme_override: themeOverride,
+          aspect_ratio: screen.aspect_ratio ?? null,
         }),
       });
       if (!res.ok) {
@@ -539,6 +602,14 @@ export default function DesignerPage() {
         ) : (
           <p className="designer-subtitle">Simple layout &middot; {screen.columns}-column grid</p>
         )}
+        <label className="designer-aspect-picker">
+          <span className="kicker">Screen preset</span>
+          <select value={screen.aspect_ratio ?? ''} onChange={(e) => handleChangeAspectRatio(e.target.value)}>
+            {ASPECT_RATIO_PRESETS.map((p) => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+          </select>
+        </label>
         <button className="btn-secondary designer-mode-toggle" onClick={handleToggleLayoutMode}>
           {screen.layout_mode === 'simple' ? 'Switch to advanced layout' : 'Switch to simple layout'}
         </button>
@@ -546,6 +617,19 @@ export default function DesignerPage() {
           Screen font{screen.theme_override ? ' •' : ''}
         </button>
       </div>
+
+      {undersizedCardCount > 0 && (
+        <div className="designer-legibility-warning">
+          <span>
+            {undersizedCardCount} card{undersizedCardCount === 1 ? '' : 's'} at their smallest usable size on this{' '}
+            {ASPECT_RATIO_PRESETS.find((p) => p.value === screen.aspect_ratio)?.label ?? 'preset'} screen -- they may be
+            hard to read.
+          </span>
+          <button type="button" className="designer-legibility-dismiss" onClick={() => setLegibilityWarningDismissed(true)}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="designer-layout">
         <aside className={`designer-palette${paletteCollapsed ? ' collapsed' : ''}`}>
@@ -588,7 +672,19 @@ export default function DesignerPage() {
         <div
           className="designer-grid-wrap"
           ref={containerRef}
-          style={{ backgroundImage: gridlineBackground(screen.columns, screen.row_height, screen.gap) }}
+          style={{
+            backgroundImage: gridlineBackground(screen.columns, screen.row_height, screen.gap),
+            // Custom (no preset) keeps the default CSS flex:1 fill-available-
+            // space behavior untouched. A preset instead lets flexbox size
+            // (and, if the viewport is short, shrink) the canvas from its
+            // own aspect-ratio rather than forcing it to fill the remaining
+            // column -- min-height/overflow-y from the stylesheet still
+            // apply, so it can never grow past the viewport the way a fixed
+            // min-height once did.
+            ...(screen.aspect_ratio
+              ? { flex: '0 1 auto', aspectRatio: screen.aspect_ratio.replace(':', ' / ') }
+              : {}),
+          }}
         >
           {mounted && (
             <ReactGridLayout

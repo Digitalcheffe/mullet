@@ -252,17 +252,24 @@ type Screen struct {
 	Gap           int
 	LayoutMode    string
 	ThemeOverride *string
+	// AspectRatio is a Designer-canvas preview hint (issue #162) -- e.g.
+	// "16:9", "9:16" -- nil meaning "Custom" (today's free-form
+	// behavior). Purely cosmetic: it never constrains Columns/RowHeight/
+	// Gap, which stay independently configurable regardless.
+	AspectRatio *string
 }
 
 func scanScreen(row interface{ Scan(...any) error }) (Screen, error) {
 	var s Screen
-	if err := row.Scan(&s.ID, &s.DisplayID, &s.Name, &s.Position, &s.Columns, &s.RowHeight, &s.Gap, &s.LayoutMode, &s.ThemeOverride); err != nil {
+	if err := row.Scan(
+		&s.ID, &s.DisplayID, &s.Name, &s.Position, &s.Columns, &s.RowHeight, &s.Gap, &s.LayoutMode, &s.ThemeOverride, &s.AspectRatio,
+	); err != nil {
 		return Screen{}, err
 	}
 	return s, nil
 }
 
-const screenColumns = `id, display_id, name, position, columns, row_height, gap, layout_mode, theme_override`
+const screenColumns = `id, display_id, name, position, columns, row_height, gap, layout_mode, theme_override, aspect_ratio`
 
 // ListScreensByDisplay returns every screen belonging to displayID, in
 // rotation order.
@@ -320,10 +327,10 @@ func CreateScreen(sqldb *sql.DB, displayID int, name string, position, columns, 
 // UpdateScreen overwrites an existing screen's editable fields (not
 // including display_id -- a screen doesn't move between displays).
 // Returns ErrNotFound if id doesn't exist.
-func UpdateScreen(sqldb *sql.DB, id int, name string, position, columns, rowHeight, gap int, layoutMode string, themeOverride *string) error {
+func UpdateScreen(sqldb *sql.DB, id int, name string, position, columns, rowHeight, gap int, layoutMode string, themeOverride, aspectRatio *string) error {
 	result, err := sqldb.Exec(
-		`UPDATE screens SET name = ?, position = ?, columns = ?, row_height = ?, gap = ?, layout_mode = ?, theme_override = ? WHERE id = ?`,
-		name, position, columns, rowHeight, gap, layoutMode, themeOverride, id,
+		`UPDATE screens SET name = ?, position = ?, columns = ?, row_height = ?, gap = ?, layout_mode = ?, theme_override = ?, aspect_ratio = ? WHERE id = ?`,
+		name, position, columns, rowHeight, gap, layoutMode, themeOverride, aspectRatio, id,
 	)
 	if err != nil {
 		return fmt.Errorf("updating screen %d: %w", id, err)

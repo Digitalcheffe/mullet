@@ -196,7 +196,7 @@ func TestScreenCRUD(t *testing.T) {
 		t.Fatalf("screens = %+v, want 1 entry", screens)
 	}
 
-	if err := UpdateScreen(sqldb, id, "Detail", 1, 12, 50, 10, "freeform", nil); err != nil {
+	if err := UpdateScreen(sqldb, id, "Detail", 1, 12, 50, 10, "freeform", nil, nil); err != nil {
 		t.Fatalf("UpdateScreen: %v", err)
 	}
 	got, _ = GetScreen(sqldb, id)
@@ -215,6 +215,52 @@ func TestScreenCRUD(t *testing.T) {
 	}
 }
 
+// Issue #162: a screen's aspect-ratio preset is nil by default
+// ("Custom"), and round-trips through Update the same way
+// ThemeOverride does.
+func TestScreenAspectRatioRoundTrip(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	displayID, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30, true, true)
+	if err != nil {
+		t.Fatalf("CreateDisplay: %v", err)
+	}
+	id, err := CreateScreen(sqldb, displayID, "Main", 0, 16, 40, 8, "freeform", nil)
+	if err != nil {
+		t.Fatalf("CreateScreen: %v", err)
+	}
+	got, err := GetScreen(sqldb, id)
+	if err != nil {
+		t.Fatalf("GetScreen: %v", err)
+	}
+	if got.AspectRatio != nil {
+		t.Errorf("GetScreen.AspectRatio = %v, want nil by default", got.AspectRatio)
+	}
+
+	ratio := "16:9"
+	if err := UpdateScreen(sqldb, id, "Main", 0, 16, 40, 8, "freeform", nil, &ratio); err != nil {
+		t.Fatalf("UpdateScreen (set ratio): %v", err)
+	}
+	got, err = GetScreen(sqldb, id)
+	if err != nil {
+		t.Fatalf("GetScreen: %v", err)
+	}
+	if got.AspectRatio == nil || *got.AspectRatio != ratio {
+		t.Errorf("GetScreen.AspectRatio = %v, want %q", got.AspectRatio, ratio)
+	}
+
+	if err := UpdateScreen(sqldb, id, "Main", 0, 16, 40, 8, "freeform", nil, nil); err != nil {
+		t.Fatalf("UpdateScreen (clear ratio): %v", err)
+	}
+	got, err = GetScreen(sqldb, id)
+	if err != nil {
+		t.Fatalf("GetScreen: %v", err)
+	}
+	if got.AspectRatio != nil {
+		t.Errorf("GetScreen.AspectRatio after clearing = %v, want nil", got.AspectRatio)
+	}
+}
+
 func TestCreateScreenUnknownDisplayReturnsErrInUse(t *testing.T) {
 	sqldb := newTestDB(t)
 
@@ -226,7 +272,7 @@ func TestCreateScreenUnknownDisplayReturnsErrInUse(t *testing.T) {
 func TestUpdateDeleteMissingScreenReturnsErrNotFound(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	if err := UpdateScreen(sqldb, 9999, "X", 0, 16, 40, 8, "freeform", nil); !errors.Is(err, ErrNotFound) {
+	if err := UpdateScreen(sqldb, 9999, "X", 0, 16, 40, 8, "freeform", nil, nil); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateScreen(missing) = %v, want ErrNotFound", err)
 	}
 	if err := DeleteScreen(sqldb, 9999); !errors.Is(err, ErrNotFound) {

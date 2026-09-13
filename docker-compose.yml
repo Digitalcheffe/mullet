@@ -10,17 +10,29 @@ services:
     # the host mapping doesn't actually point at.
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
+    # A named volume, not a relative bind mount (`./data:/data`) --
+    # a relative path resolves against wherever `docker compose` is
+    # actually run from, which for a Portainer "Git repository" stack
+    # (or any GitOps-style deploy) is Portainer's own managed clone of
+    # this repo. If Portainer re-clones or recreates that checkout on
+    # redeploy, a relative ./data bind mount gets wiped right along
+    # with it -- taking the database with it, even though nothing about
+    # the deployment "failed." A named volume lives in Docker's own
+    # storage, completely decoupled from the repo checkout, so it
+    # survives a redeploy/re-clone regardless of how the stack's git
+    # checkout itself is managed. Everything that needs to persist --
+    # the database, uploaded files, and logs -- already lives under one
+    # /data (DB_PATH/UPLOADS_DIR/LOG_PATH below), so one volume covers
+    # all of it.
     volumes:
-      - ./data:/data
+      - mullet_data:/data
     environment:
       - PORT=${PORT:-8080}
       - DB_PATH=/data/mullet.db
       # Admin-uploaded files (e.g. a theme's background image, issue
       # #58) and the log file below -- deliberately under the same
-      # ./data volume as the database rather than a second volume, so
-      # they all survive `docker-compose pull && up -d` the same way
-      # the database does. No need to change these unless you're
-      # relocating ./data itself.
+      # mullet_data volume as the database rather than a second one, so
+      # they all persist together. No need to change these.
       - UPLOADS_DIR=/data/uploads
       - LOG_PATH=/data/logs/mullet.log
       # Outgoing mail (password reset, notification emails -- issue
@@ -42,3 +54,11 @@ services:
       # real deployment.
       # - AUTH_DISABLED=true
     restart: unless-stopped
+
+volumes:
+  # Named (not bind-mounted) precisely so it survives a redeploy
+  # regardless of where/how the stack's own files are checked out --
+  # see the comment on the service's own `volumes:` above. Inspect it
+  # directly with `docker volume inspect mullet_data` if you need the
+  # real host path for a manual backup.
+  mullet_data:

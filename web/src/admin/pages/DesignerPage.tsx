@@ -42,6 +42,11 @@ interface Card {
   h: number;
   config: Record<string, unknown>;
   theme_override?: Partial<ThemeTokens>;
+  // Optional card header (issue #145) -- absent/empty header_text means
+  // no header renders at all.
+  header_text?: string;
+  header_valign?: 'top' | 'middle' | 'bottom';
+  header_halign?: 'left' | 'center' | 'right';
 }
 
 interface PluginManifest {
@@ -391,6 +396,9 @@ export default function DesignerPage() {
       data_plugin_instance_ids?: number[];
       config: unknown;
       theme_override: Partial<ThemeTokens> | null;
+      header_text: string | null;
+      header_valign: 'top' | 'middle' | 'bottom' | null;
+      header_halign: 'left' | 'center' | 'right' | null;
     },
   ) {
     await withSaveStatus(async () => {
@@ -412,6 +420,9 @@ export default function DesignerPage() {
           h: card.h,
           config: values.config,
           theme_override: values.theme_override,
+          header_text: values.header_text,
+          header_valign: values.header_valign,
+          header_halign: values.header_halign,
         }),
       });
       if (!res.ok) {
@@ -671,9 +682,15 @@ interface CardSettingsPanelProps {
     data_plugin_instance_ids?: number[];
     config: unknown;
     theme_override: Partial<ThemeTokens> | null;
+    header_text: string | null;
+    header_valign: 'top' | 'middle' | 'bottom' | null;
+    header_halign: 'left' | 'center' | 'right' | null;
   }) => Promise<void>;
   onCancel: () => void;
 }
+
+const HEADER_VALIGNS = ['top', 'middle', 'bottom'] as const;
+const HEADER_HALIGNS = ['left', 'center', 'right'] as const;
 
 // Card-level overrides stay narrow by design (see architecture.md
 // "Theme Cascade"): a card can nudge its own background and accent, not
@@ -817,6 +834,9 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
   });
   const [overrideEnabled, setOverrideEnabled] = useState(card.theme_override != null);
   const [themeOverride, setThemeOverride] = useState<Partial<ThemeTokens>>(card.theme_override ?? {});
+  const [headerText, setHeaderText] = useState(card.header_text ?? '');
+  const [headerValign, setHeaderValign] = useState<(typeof HEADER_VALIGNS)[number]>(card.header_valign ?? 'top');
+  const [headerHalign, setHeaderHalign] = useState<(typeof HEADER_HALIGNS)[number]>(card.header_halign ?? 'left');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -831,6 +851,12 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
     setError(null);
     setSubmitting(true);
     try {
+      const trimmedHeaderText = headerText.trim();
+      const headerFields = {
+        header_text: trimmedHeaderText === '' ? null : trimmedHeaderText,
+        header_valign: trimmedHeaderText === '' ? null : headerValign,
+        header_halign: trimmedHeaderText === '' ? null : headerHalign,
+      };
       await onSave(
         supportsMulti
           ? {
@@ -838,11 +864,13 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
               data_plugin_instance_ids: dataPluginInstanceIds,
               config: configValues,
               theme_override: overrideEnabled ? themeOverride : null,
+              ...headerFields,
             }
           : {
               data_plugin_instance_id: dataPluginInstanceId,
               config: configValues,
               theme_override: overrideEnabled ? themeOverride : null,
+              ...headerFields,
             },
       );
     } catch (err) {
@@ -912,6 +940,40 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
             onChange={(v) => setConfigValues((prev) => ({ ...prev, [key]: v }))}
           />
         ))
+      )}
+
+      <label className="field">
+        <span className="kicker">Header text</span>
+        <input
+          type="text"
+          value={headerText}
+          onChange={(e) => setHeaderText(e.target.value)}
+          placeholder="e.g. Kitchen Calendar"
+        />
+        <span className="field-help">Optional label shown over the card. Leave blank for no header.</span>
+      </label>
+      {headerText.trim() !== '' && (
+        <div className="field">
+          <span className="kicker">Header alignment</span>
+          <div className="header-align-grid">
+            {HEADER_VALIGNS.map((v) =>
+              HEADER_HALIGNS.map((h) => (
+                <button
+                  type="button"
+                  key={`${v}-${h}`}
+                  className={`header-align-cell${headerValign === v && headerHalign === h ? ' selected' : ''}`}
+                  aria-label={`${v} ${h}`}
+                  onClick={() => {
+                    setHeaderValign(v);
+                    setHeaderHalign(h);
+                  }}
+                >
+                  <span className="header-align-dot" />
+                </button>
+              )),
+            )}
+          </div>
+        </div>
       )}
 
       <label className="toggle-row">

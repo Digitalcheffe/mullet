@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { ColorField } from './ThemeTokenFields';
 import './ManifestForm.css';
 
 export interface SetupField {
   key: string;
   label: string;
-  type: 'text' | 'select' | 'multi-select' | 'toggle' | 'password' | 'number';
+  type: 'text' | 'select' | 'multi-select' | 'toggle' | 'password' | 'number' | 'color';
   required: boolean;
   default?: unknown;
   placeholder?: string;
@@ -301,6 +302,16 @@ function SetupFieldInput({
           />
           {help}
         </label>
+      );
+
+    case 'color':
+      return (
+        <ColorField
+          label={field.label}
+          value={typeof value === 'string' ? value : '#000000'}
+          onChange={onChange}
+          helpText={field.help_text}
+        />
       );
 
     case 'text':

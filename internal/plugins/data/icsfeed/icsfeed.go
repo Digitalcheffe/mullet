@@ -87,9 +87,8 @@ func (p *Plugin) Manifest() plugindata.DataPluginManifest {
 				Placeholder: "Family",
 			},
 			{
-				Key: "color", Label: "Color", Type: "text",
-				Placeholder: "#4285F4",
-				HelpText:    "Hex color shown by calendar UI plugins.",
+				Key: "color", Label: "Color", Type: "color", Default: "#4285F4",
+				HelpText: "Shown by calendar UI plugins.",
 			},
 			{
 				Key: "username", Label: "Username", Type: "text",

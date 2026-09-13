@@ -40,7 +40,11 @@ function WeatherForecastComponent({ data, config, size, theme }: WidgetProps<Wea
   // fit; 1 grid unit here stands for the screen's own column width,
   // which the widget doesn't know in pixels, so this just tracks grid
   // units directly (consistent with weather-current's own compacting).
-  const maxDaysForWidth = size.w <= 4 ? 2 : size.w <= 8 ? 3 : size.w <= 12 ? 4 : 5;
+  // Calibrated against the widget's own defaultSize (w:8) landing on 5
+  // -- matching the "Days to show" config default -- rather than the
+  // previous breakpoints, which capped the default size down to 3
+  // regardless of what "Days to show" was set to.
+  const maxDaysForWidth = size.w <= 4 ? 2 : size.w <= 5 ? 3 : size.w <= 6 ? 4 : 5;
   const days = [...data].sort((a, b) => a.date.localeCompare(b.date)).slice(0, Math.min(requestedDays, maxDaysForWidth, data.length));
 
   const style = cardStyle(theme);

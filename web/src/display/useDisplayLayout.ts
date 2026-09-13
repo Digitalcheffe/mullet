@@ -14,6 +14,11 @@ export interface CardLayout {
   h: number;
   config: Record<string, unknown>;
   theme_override?: Partial<ThemeTokens>;
+  // Optional card header (issue #145) -- absent/empty header_text means
+  // no header renders at all.
+  header_text?: string;
+  header_valign?: 'top' | 'middle' | 'bottom';
+  header_halign?: 'left' | 'center' | 'right';
 }
 
 export interface ScreenLayout {

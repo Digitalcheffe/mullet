@@ -663,6 +663,12 @@ type cardRequest struct {
 	H                     int             `json:"h"`
 	Config                json.RawMessage `json:"config"`
 	ThemeOverride         json.RawMessage `json:"theme_override"`
+	// HeaderText nil/empty means no header (issue #145); HeaderValign/
+	// HeaderHalign are only meaningful alongside a non-empty HeaderText,
+	// same "unused sibling field" relationship as ThemeOverride's keys.
+	HeaderText   *string `json:"header_text"`
+	HeaderValign *string `json:"header_valign"`
+	HeaderHalign *string `json:"header_halign"`
 }
 
 type cardResponse struct {
@@ -677,6 +683,9 @@ type cardResponse struct {
 	H                     int             `json:"h"`
 	Config                json.RawMessage `json:"config"`
 	ThemeOverride         json.RawMessage `json:"theme_override,omitempty"`
+	HeaderText            *string         `json:"header_text,omitempty"`
+	HeaderValign          *string         `json:"header_valign,omitempty"`
+	HeaderHalign          *string         `json:"header_halign,omitempty"`
 }
 
 func toCardResponse(c db.Card, dataSources []int) cardResponse {
@@ -688,6 +697,7 @@ func toCardResponse(c db.Card, dataSources []int) cardResponse {
 		ID: c.ID, ScreenID: c.ScreenID, UIPluginID: c.UIPluginID, DataPluginInstanceID: c.DataPluginInstanceID,
 		DataPluginInstanceIDs: dataSources,
 		X:                     c.X, Y: c.Y, W: c.W, H: c.H, Config: json.RawMessage(config),
+		HeaderText: c.HeaderText, HeaderValign: c.HeaderValign, HeaderHalign: c.HeaderHalign,
 	}
 	if c.ThemeOverride != nil {
 		resp.ThemeOverride = json.RawMessage(*c.ThemeOverride)
@@ -749,7 +759,7 @@ func handleCreateCard(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		id, err := db.CreateCard(sqldb, screenID, req.UIPluginID, req.DataPluginInstanceID, req.X, req.Y, req.W, req.H, config, themeOverride)
+		id, err := db.CreateCard(sqldb, screenID, req.UIPluginID, req.DataPluginInstanceID, req.X, req.Y, req.W, req.H, config, themeOverride, req.HeaderText, req.HeaderValign, req.HeaderHalign)
 		switch {
 		case errors.Is(err, db.ErrInUse):
 			http.Error(w, "screen not found, or data_plugin_instance_id doesn't exist", http.StatusBadRequest)
@@ -800,7 +810,7 @@ func handleUpdateCard(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		switch err := db.UpdateCard(sqldb, id, req.UIPluginID, req.DataPluginInstanceID, req.X, req.Y, req.W, req.H, config, themeOverride); {
+		switch err := db.UpdateCard(sqldb, id, req.UIPluginID, req.DataPluginInstanceID, req.X, req.Y, req.W, req.H, config, themeOverride, req.HeaderText, req.HeaderValign, req.HeaderHalign); {
 		case errors.Is(err, db.ErrNotFound):
 			http.Error(w, "not found", http.StatusNotFound)
 			return

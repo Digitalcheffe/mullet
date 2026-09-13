@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -38,6 +39,8 @@ import (
 )
 
 func main() {
+	printBanner()
+
 	startedAt := time.Now()
 	cfg := config.Load()
 
@@ -70,12 +73,16 @@ func main() {
 	// Applies before any other log output, so file logging (if
 	// configured) captures everything from here on -- pre-DB-open
 	// failures above can only ever reach stdout, since the setting
-	// itself lives in the database.
-	if logPath, err := db.GetLogFilePath(sqldb); err != nil {
+	// itself lives in the database. logPath itself (not just whether
+	// Configure succeeded) is reused by logStartupSummary below, so
+	// declared here rather than scoped to this if-statement.
+	logPath, err := db.GetLogFilePath(sqldb)
+	if err != nil {
 		log.Printf("loading log file path setting: %v", err)
 	} else if logPath != "" {
 		if err := logging.Configure(logPath); err != nil {
 			log.Printf("configuring log file %q: %v -- falling back to stdout only", logPath, err)
+			logPath = ""
 		}
 	}
 
@@ -113,7 +120,9 @@ func main() {
 		}
 	}()
 
-	log.Printf("mullet server listening on :%s", cfg.Port)
+	logStartupSummary(sqldb, cfg.DBPath, logPath)
+	logStartupLine("ready -- listening on :%s", cfg.Port)
+	fmt.Println(startupRule)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}

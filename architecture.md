@@ -320,8 +320,10 @@ one.
 
 | Table | Purpose |
 |---|---|
-| `users` | Admin accounts (bcrypt password hash) |
-| `system_settings` | Server-level key/value settings, including the persisted JWT signing secret |
+| `users` | Admin accounts (bcrypt password hash, `role` -- currently always `"admin"`, no real permission tiers). Multiple accounts (#111), each optionally with an `email` (for password reset) and TOTP two-factor auth (`totp_secret`/`totp_enabled`, #114) |
+| `password_reset_tokens` | Single-use, time-limited reset tokens (#78) -- only the SHA-256 hash of the raw token is stored, `ON DELETE CASCADE` from `users` |
+| `totp_backup_codes` | One-time TOTP recovery codes (#114), hashed at rest, `ON DELETE CASCADE` from `users` |
+| `system_settings` | Server-level key/value settings: the persisted JWT signing secret, SMTP config (`smtp_config`, password encrypted at rest), outgoing webhook config (`webhook_config`, secret encrypted, #112), notification preferences (`notification_preferences`, #112 -- which security events email every admin, all off by default), and the log file destination (`log_file_path`, #113, empty means stdout only) |
 | `data_plugin_instances` | Every configured plugin instance: which plugin, its JSON config, enabled flag, refresh interval, last fetch time/error |
 | `calendars` | Discovered calendars, one row per `(plugin_instance_id, external_id)` — see [entity discovery](#write-path) |
 | `task_lists` | Same shape as `calendars`, for the `tasks` contract -- see [entity discovery](#write-path) |
@@ -330,6 +332,7 @@ one.
 | `displays` | A physical output routed at `/display/{slug}` (unique). `theme_id` nullable FK to `themes`; `rotation_seconds` how often it rotates through its screens; `show_top_bar`/`show_bottom_bar` toggle the fixed clock/weather and now-playing/alerts bars |
 | `screens` | A page within a display (`ON DELETE CASCADE` from `displays`). Owns its own grid (`columns`, `row_height`, `gap`, all in pixels except `columns`) rather than inheriting one from its display; `position` orders rotation. `layout_mode` (`'simple'` \| `'freeform'`, default `'simple'`, `014_screen_layout_mode.sql`, #73) only changes what the Designer's own UI offers for that screen (a small fixed grid with S/M/L size presets and no resize handles, vs. the original full-control grid) -- it doesn't change the stored grid columns/row_height/gap semantics themselves, the live renderer, or how cards are stored |
 | `cards` | A positioned UI plugin on a screen's grid (`ON DELETE CASCADE` from `screens`). `x`/`y`/`w`/`h` are grid units. `data_plugin_instance_id` (nullable, `ON DELETE SET NULL`) is which configured plugin instance it reads from — nullable because a card's UI plugin might need no data (clock) or the admin hasn't wired one up yet; `SET NULL` rather than cascade so deleting an unrelated data plugin instance doesn't silently delete a card |
+| `card_data_sources` | A card that opts into multi-source merging (`UIPlugin.supportsMultiDataSource`, currently just calendar-agenda and week-view, #97) can bind to *several* data plugin instances at once -- one row per `(card_id, data_plugin_instance_id)`, `ON DELETE CASCADE` from both. `cards.data_plugin_instance_id` stays in sync with the first bound instance, so any code path that only reads the singular column (every other widget type) keeps working unchanged |
 | `oauth_tokens` | One row per OAuth2 plugin instance's access/refresh token (`internal/db/migrations/008_oauth_tokens.sql`, `ON DELETE CASCADE` from `data_plugin_instances`, `UNIQUE` on `plugin_instance_id`) — see [OAuth2](#oauth2-built) below |
 | `clients` | Registered client devices, dedicated app or browser alike (`internal/db/migrations/010_clients.sql` + `011_client_ip.sql`, #29/#30). `client_id` is generated *by the client itself* (a pairing code) and sent at registration, `UNIQUE` -- registering the same `client_id` twice is idempotent, not an error, since a client can't tell whether its first registration actually landed. `display_id` nullable FK to `displays` (no `ON DELETE CASCADE`: deleting a display a client is assigned to is blocked, same as `theme_id`, until the client is reassigned or removed). `status` is only ever the admin's own lifecycle call (`pending`/`approved`/`rejected`) -- see [Client Connection Model](#client-connection-model-built) for why "offline" isn't a stored status. `ip_address` is a display-only hint for telling pending clients apart, refreshed on every registration/poll, not an identity mechanism |
 | `displays.offline_screen_html` | Nullable column added alongside `clients` (same migration): an admin-authored, self-contained offline-screen page for one display. `NULL` means "use the generated default" -- see [Client Connection Model](#client-connection-model-built) |
@@ -359,10 +362,27 @@ All routes below are wired in `internal/api/router.go`.
 | `GET /healthz` | none | Liveness check |
 | `POST /api/admin/setup` | none (first-run only) | Create the initial admin account |
 | `GET /api/admin/setup` | none | Whether setup has already run |
-| `POST /api/admin/login` | none | Exchange username/password for a JWT |
+| `POST /api/admin/login` | none | Exchange username/password for a JWT -- returns a *pending* JWT (`Claims.Pending`, rejected by `requireAuth`) instead of a real one if the account has TOTP enabled, until `/api/admin/mfa/verify` exchanges it for a real session |
+| `POST /api/admin/forgot-password` | none | Emails a password reset link if the given address matches a user with one on file (#78) -- always responds the same way either way, so this can't be used to enumerate which emails have accounts |
+| `POST /api/admin/reset-password` | none | Consumes a single-use reset token, sets a new password |
+| `POST /api/admin/mfa/verify` | none (holds a pending JWT, not a real one) | Exchanges a pending JWT + valid TOTP code (or backup code) for a real session token (#114) |
 | `GET /api/admin/me` | JWT | Whoami, exercises the auth guard |
+| `PUT /api/admin/account/email` | JWT | Set the current user's email (for password reset) |
+| `PUT /api/admin/account/password` | JWT | Change the current user's password (requires the current password; wrong-password is `403`, not `401` -- see [Auth Model](#auth-model-built)) |
+| `GET /api/admin/account/totp` | JWT | Whether TOTP is enabled for the current user |
+| `POST /api/admin/account/totp/enroll` | JWT | Generates a new (unconfirmed) TOTP secret + QR code |
+| `POST /api/admin/account/totp/confirm` | JWT | Confirms enrollment with one valid code, flips `totp_enabled` on, issues backup codes |
+| `DELETE /api/admin/account/totp` | JWT | Disables TOTP (requires the current password) |
+| `POST /api/admin/account/totp/backup-codes` | JWT | Regenerates backup codes, invalidating the old set (requires the current password) |
+| `GET`/`POST /api/admin/users` | JWT | List every admin account / create another one (#111) |
+| `DELETE /api/admin/users/{id}` | JWT | Remove an account -- `409` if it's the last one (`db.ErrLastAdmin`) |
 | `GET /api/admin/dashboard` | JWT | Server info, at-a-glance plugin status, and a per-display summary (screen count, first screen's ID for an "Open in Designer" link, online -- any approved client assigned there currently polling) for the Dashboard's Displays panel (#46) |
-| `GET`/`PUT /api/admin/settings` | JWT | System settings |
+| `GET`/`PUT /api/admin/settings` | JWT | System settings (server name, log file path -- #113) |
+| `GET`/`PUT /api/admin/settings/smtp` | JWT | Outgoing mail config (#78) -- password is write-only, never echoed back |
+| `POST /api/admin/settings/smtp/test` | JWT | Sends a test email with the currently-saved (or just-submitted) config |
+| `GET`/`PUT /api/admin/settings/notifications` | JWT | Which security events (new user, password reset requested/completed, client registered/approved) email every admin (#112) |
+| `GET`/`PUT /api/admin/settings/webhook` | JWT | Outgoing webhook URL, secret (write-only), and JSON payload template for the same event set (#112) |
+| `POST /api/admin/settings/webhook/test` | JWT | Sends a test payload to the currently-saved (or just-submitted) webhook |
 | `GET /api/admin/plugins` | JWT | List registered plugin types + manifests |
 | `GET`/`POST /api/admin/plugins/instances` | JWT | List / create plugin instances |
 | `PUT`/`DELETE /api/admin/plugins/instances/{id}` | JWT | Update / remove an instance |
@@ -378,10 +398,10 @@ All routes below are wired in `internal/api/router.go`.
 | `GET`/`POST /api/admin/displays/{id}/screens` | JWT | List / create screens on a display |
 | `GET`/`PUT`/`DELETE /api/admin/screens/{id}` | JWT | Get / update / remove a screen (delete cascades to its cards) |
 | `GET`/`POST /api/admin/screens/{id}/cards` | JWT | List / create cards on a screen |
-| `PUT`/`DELETE /api/admin/cards/{id}` | JWT | Update / remove a card |
+| `PUT`/`DELETE /api/admin/cards/{id}` | JWT | Update / remove a card. `data_plugin_instance_ids` (#97) is an optional array-of-instance-ids field alongside the singular `data_plugin_instance_id` -- omitted, it's left untouched (every non-multi-source widget's request never sends it); present, it replaces the full `card_data_sources` set |
 | `POST /api/admin/uploads` | JWT | Accepts one `multipart/form-data` "file" field (image only, verified by actually decoding it, not by extension/Content-Type; 8 MiB max), returns `{url}` -- see [Theme Cascade](#theme-cascade-built) |
 | `GET /uploads/{name}` | none (LAN-facing, like the display itself) | Serves an admin-uploaded file back -- a display rendering one as its background has no way to attach a Bearer token |
-| `GET /api/data/{shape}` | none (LAN-facing, like the display itself) | Typed rows for a data shape, optionally filtered |
+| `GET /api/data/{shape}` | none (LAN-facing, like the display itself) | Typed rows for a data shape, optionally filtered. `?plugin=` is repeatable (`?plugin=1&plugin=2`) -- a multi-source card (#97) merges several instances' rows into one response via a single `IN (...)` query |
 | `GET /api/display/{slug}` | none (LAN-facing, like the display itself) | A display's own fields, resolved theme tokens, and every screen with its cards, in one call -- see [Display Hierarchy](#display-hierarchy-built-end-to-end) |
 | `POST /api/clients/register` | none (clients are admin-approved, not authenticated) | Register a client-generated `client_id` + name; idempotent, always starts/stays `pending` -- see [Client Connection Model](#client-connection-model-built) |
 | `GET /api/clients/{client_id}/config` | none | A client's polling heartbeat: stamps `last_seen_at`, returns its status and (once approved) assigned display's slug |
@@ -448,9 +468,8 @@ Display   "Kitchen"  --  /display/kitchen
   JSON `config`, an optional data source (`data_plugin_instance_id`,
   nullable, `ON DELETE SET NULL`), and an optional `theme_override`.
 - **UI plugin**: the React component rendered inside a card, reading one
-  data shape. Two exist (`mullet-weather-current`, `mullet-weather-forecast`
-  — see [UI Plugins](#ui-plugins-six-built-rendered-live-on-the-display) below); the
-  rest implied by the plugins above are still to be built.
+  data shape (or none) -- see [UI Plugins](#ui-plugins-16-built-rendered-live-on-the-display)
+  below for the full, current list.
 
 ### The Designer
 
@@ -475,13 +494,18 @@ The palette (issue #46) reads the real UI plugin registry
 separately hand-maintained list -- it can't drift out of sync with what
 UI plugins actually exist, the way an earlier hardcoded version already
 had (missing six of the ten built by the time this was noticed). A
-card's gear icon opens a settings panel: a data source dropdown
+card's gear icon opens a settings panel: a data source picker
 (configured plugin instances filtered to ones whose plugin manifest
-lists the shape this card type reads), one real bound input per
-`configSchema` entry the widget declares (`ConfigFieldInput`, handling
-all six `ConfigField` types -- text/number/select/multi-select/toggle/
-color -- the same way `ManifestForm.tsx` renders a data plugin's
-`SetupField`s), and an optional theme override -- a toggle plus the
+lists the shape this card type reads) -- a single dropdown, or a
+multi-select (Ctrl/Cmd-click for more than one) when the widget's
+`UIPlugin.supportsMultiDataSource` is true (#97; the multi-select's
+full selection is sent as `data_plugin_instance_ids`, the singular
+`data_plugin_instance_id` field only ever touched by widgets that don't
+opt in) -- one real bound input per `configSchema` entry the widget
+declares (`ConfigFieldInput`, handling all eight `ConfigField` types --
+text/textarea/number/select/multi-select/toggle/color/date -- the same
+way `ManifestForm.tsx` renders a data plugin's `SetupField`s), and an
+optional theme override -- a toggle plus the
 narrow `ThemeTokenFields` set described in
 [Theme Cascade](#theme-cascade-built) (#21). Nothing here is raw JSON
 editing anymore; every value saved is guaranteed to be exactly what the
@@ -521,7 +545,7 @@ display to render real widgets, not the editor's own preview, and #46
 (admin visual design) didn't extend that either. See
 [Divergence](#divergence-from-the-original-proposal).
 
-### UI Plugins (Ten built, rendered live on the display)
+### UI Plugins (16 built, rendered live on the display)
 
 `web/src/plugins/` holds real UI plugin implementations, each in its own
 folder per `UIPlugin` (`web/src/shared/types/plugin.ts`): an `id`,
@@ -529,18 +553,21 @@ folder per `UIPlugin` (`web/src/shared/types/plugin.ts`): an `id`,
 `mullet-clock` -- `useShapeData` skips fetching entirely for an empty
 shape rather than hitting `/api/data/` with an empty segment),
 `defaultSize`/`minSize`/`maxSize` (grid units), an optional
-`configSchema`, and a `component` receiving `WidgetProps<TData>` --
-`data` (the shape's rows, exactly as `GET /api/data/{shape}` returns
-them), `config`, `size` (current grid units, the one hint a widget gets
-about its own room -- there's no ResizeObserver or pixel measurement),
-`theme`, and `pluginInstanceId` (the card's own
-`data_plugin_instance_id`, `null` if unset) -- most widgets ignore it
-since `data` already carries their one shape's rows; it exists for a
-widget that needs a *second*, related shape from the same instance (see
-`mullet-calendar-agenda` below). Nothing fetches on a widget's behalf
-beyond that one primary shape -- a widget that wants more (like the
-calendars lookup) calls the display's own `useShapeData` hook itself,
-the same way the framework does.
+`configSchema`, an optional `supportsMultiDataSource` (#97, see below),
+and a `component` receiving `WidgetProps<TData>` -- `data` (the shape's
+rows, exactly as `GET /api/data/{shape}` returns them, merged across
+every bound instance for a multi-source card), `config`, `size`
+(current grid units, the one hint a widget gets about its own room --
+there's no ResizeObserver or pixel measurement), `theme`, and
+`pluginInstanceId` (the card's own data plugin instance id(s) -- a
+single number, an array for a multi-source card, or `null` if unset) --
+most widgets ignore it since `data` already carries their one shape's
+rows; it exists for a widget that needs a *second*, related shape from
+the same instance(s) (see `mullet-calendar-agenda` below). Nothing
+fetches on a widget's behalf beyond that one primary shape -- a widget
+that wants more (like the calendars lookup) calls the display's own
+`useShapeData` hook itself, the same way the framework does (and that
+hook accepts the same single-id-or-array form).
 
 **Naming**: first-party UI plugin `id`s are prefixed `mullet-` (e.g.
 `mullet-weather-current`) to leave the unprefixed namespace free for
@@ -551,7 +578,7 @@ existing data plugin `id`s (`clock`, `openweathermap`, `open-meteo`,
 `ics-feed`, `msgraph-calendar`, `msgraph-todo`) are *not* retroactively
 renamed, since `id` is persisted in `data_plugin_instances.plugin_id`
 and a rename would break every already-configured instance in a real
-deployment. Ten UI plugins exist:
+deployment. 16 UI plugins exist:
 
 - **`mullet-weather-current`**: temp, condition glyph, high/low, humidity,
   wind speed. Drops the secondary stats when `size` is small (`≤2` grid
@@ -560,16 +587,30 @@ deployment. Ten UI plugins exist:
   precip chance), the day count itself capped by both a `days` config
   option and by `size.w` (a narrow card shows 2 days, not all 5,
   squeezed into columns).
-- **`mullet-calendar-agenda`** (#26): a rolling N-day list (`days`
-  config, default 5) grouped by day, all-day events as a colored badge
-  above timed ones, timed ones sorted and shown with their time. Reads
-  `events` as its primary shape plus `calendars` as a second one (via
-  `pluginInstanceId`) to color-code each entry by its real calendar
-  color (`calendars.color`, e.g. `ics-feed`'s configured `color` field,
-  or Microsoft Graph's `hexColor`) -- a calendar with no color set falls
-  back to a deterministic hash-based one (`web/src/plugins/shared/idColor.ts`)
-  so entries still stay visually distinct rather than all rendering
-  identically.
+- **`mullet-calendar-agenda`** (#26, #94, #97, #98): a rolling N-day list
+  (`days` config, default 5) grouped by day, all-day events as a colored
+  badge above timed ones, timed ones sorted and shown with their time.
+  `supportsMultiDataSource: true` (#97) -- merges events from several
+  calendar sources (Family + Birthdays + Holidays, say) onto one card.
+  Reads `events` as its primary shape plus `calendars` as a second one
+  (via `pluginInstanceId`) to show a small colored initial pill per event
+  keyed to its real source calendar (#94, `calendars.color`, e.g.
+  `ics-feed`'s configured `color` field, or Microsoft Graph's
+  `hexColor`) -- a calendar with no color set falls back to a
+  deterministic hash-based one (`web/src/plugins/shared/idColor.ts`) so
+  entries still stay visually distinct. A legend below the day list maps
+  each color back to its calendar name, shown only when more than one
+  calendar is actually represented. Events on today's date whose end
+  time has already passed render at reduced opacity (#98, all-day events
+  exempt -- they're active the whole day, not a single instant); a local
+  30s tick keeps this current independent of the 60s data poll.
+- **`mullet-calendar-week`** ("Week View", #93): a Sun-Sat (or Mon-Sun,
+  `startMonday` config) grid of day columns instead of a scrolling list
+  -- the "whole week at a glance" layout the agenda card doesn't cover.
+  Reads the same `events`/`calendars` shapes and shares the agenda
+  card's per-source color pills, legend, grey-out-for-passed-today, and
+  `supportsMultiDataSource` merge rather than reimplementing any of
+  them.
 - **`mullet-task-list`** (#26): tasks grouped by list (reads `task_lists`
   the same second-shape way, for real list names instead of raw IDs),
   each row showing completion (a checkbox, struck through once done --
@@ -615,8 +656,38 @@ deployment. Ten UI plugins exist:
   status text itself) just without a bar. Hides `delivered` packages by
   default (`showDelivered` config), since the point is what's still
   incoming.
+- **`mullet-notes`** ("Text / Notes", #88): free-text (`text` config,
+  `textarea`, line breaks preserved) with its own font family, size, and
+  alignment -- deliberately its *own* choice, not the screen/theme's
+  font, since a sticky note is meant to stand out. `dataShape: ''`, same
+  no-data-source pattern as the clock.
+- **`mullet-birthdays`** ("Upcoming Birthdays", #101): filters the same
+  `events` shape down to the next N (`count` config, default 5) upcoming
+  occurrences, sorted, past ones excluded -- reuses whatever
+  recurring-event expansion the data plugin already did (e.g. `ics-feed`'s
+  RRULE handling via `teambition/rrule-go`) rather than doing its own
+  "ignore the year, find the next occurrence" math.
+- **`mullet-countdown`** ("Countdown", #96): "N days until `<label>`" for
+  an admin-set target date + label, `dataShape: ''` -- multiple
+  countdowns are just multiple card instances, not a special
+  multi-target mode. Added a `'date'` `ConfigField` type (a native
+  `<input type="date">` in the Designer's settings panel) for this,
+  the first new `ConfigField` type since the original six
+  (text/textarea/number/select/multi-select/toggle/color).
+- **`mullet-quote-of-the-day`** ("Quote of the Day", #102): a bundled
+  static list of public-domain/proverbial quotes, `dataShape: ''`,
+  picked deterministically by calendar day (a hash of the local date) so
+  it holds steady across refresh polls and only changes once per day.
+- **`mullet-moon-phase`** ("Moon Phase", #103): phase name + icon,
+  computed client-side from the current date via a fixed synodic-month
+  reference epoch -- no external API or data plugin. The icon is a
+  single parametrized "two-arc lune" SVG shape (illumination fraction +
+  waxing/waning determine two arc sweep-flags and a terminator-ellipse
+  radius) rather than 8 separately hand-drawn phase icons, so it renders
+  the correct crescent/gibbous silhouette continuously across the whole
+  cycle.
 
-All ten render their **own** full card chrome from `theme` (background,
+All 16 render their **own** full card chrome from `theme` (background,
 border, radius, blur, opacity, font) -- there's no separate wrapping
 `Card` component in this design, matching how the Designer's own
 placeholder cards already work. The two weather widgets key their icon
@@ -654,10 +725,16 @@ rather than a bespoke endpoint.
 A real bug this issue's live testing caught, worth remembering for any
 future date-grouping widget: `calendar-agenda`/`meal-plan` both group
 events into calendar days by the *viewer's local* date, not UTC's
-(`localDayKey` in each, deliberately not `Date.toISOString()`) -- a
-kiosk display's "today" means the viewer's wall-clock today, and using
-UTC's calendar date instead is off by a day for roughly half the
-world's timezones at any given moment.
+(deliberately not `Date.toISOString()`) -- a kiosk display's "today"
+means the viewer's wall-clock today, and using UTC's calendar date
+instead is off by a day for roughly half the world's timezones at any
+given moment. `localDayKey` (this same local-day-grouping logic) and
+`daysBetween`/`parseLocalDate` (whole-calendar-day arithmetic, and
+parsing a plain `<input type="date">` value without it shifting a day
+via UTC) now live in `web/src/plugins/shared/dateMath.ts`, extracted
+there once `mullet-birthdays`/`mullet-countdown`/`mullet-calendar-week`
+needed the same logic a second (and third) time rather than each
+carrying its own copy.
 
 ### The Display Renderer
 
@@ -914,6 +991,12 @@ its admin UI, without the client app itself (a separate repo, per
   browsers as clients rather than installing a dedicated app -- "let
   the client build a call to register if there's a real client app,
   and let a browser hit this page if there isn't" is the guiding split.
+  `/admin/clients` (#81) surfaces this discoverably rather than leaving
+  an admin to already know the URL: an "Add a Screen" section with
+  numbered instructions and the actual `{window.location.origin}/register`
+  address shown prominently (also fixed the page's empty-state copy,
+  which previously implied a client had to register itself first with
+  no indication of how).
   Generates its own pairing-code-style `client_id`
   (`generateClientId`, a small alphabet skipping visually ambiguous
   characters) on first visit and persists it in a cookie
@@ -951,6 +1034,73 @@ of this doc claimed.
   above — every `/api/admin/*` request is treated as an authenticated
   dev user. Local development only; the server logs a startup warning
   when it's set, and it must never be set in a real deployment.
+
+**Multiple admin accounts (#111).** `/admin/settings?tab=users` lists
+every account and can add another (username + password) or remove one
+-- `DELETE /api/admin/users/{id}` refuses with `409` (`db.ErrLastAdmin`)
+if it's the only one left, checked by deleting inside a transaction and
+counting what remains rather than counting first (an earlier version of
+this check raced: counting-then-deleting could wrongly report
+`ErrLastAdmin` for a nonexistent id once only one real admin existed).
+There's no permission tier below "admin" yet -- `users.role` exists but
+every account is `"admin"`.
+
+**Two-factor authentication (#114), default off, no enforcement.**
+TOTP (RFC 6238/4226, SHA1, 6 digits, 30s step, ±1 step of clock skew
+tolerance, `internal/auth/totp.go` -- hand-rolled against RFC 6238's own
+published test vector, zero new Go dependencies). Enrollment
+(`/admin/settings?tab=account`) shows a QR code (`qrcode.react`) for an
+unconfirmed secret; it only takes effect (`users.totp_enabled`) once
+confirmed with one valid code, and 10 single-use backup codes
+(`XXXX-XXXX` format, hashed at rest in `totp_backup_codes`) are issued
+at that point. A TOTP-enabled account's `POST /api/admin/login` returns
+a *pending* token (`Claims.Pending`, explicitly rejected by
+`requireAuth`) instead of a real one; `POST /api/admin/mfa/verify`
+exchanges it for a real session given a valid TOTP code or an unused
+backup code. Disabling TOTP or regenerating backup codes both require
+re-entering the current password.
+  - **401 vs 403 convention**: every "confirm your current password"
+    check (disable TOTP, regenerate backup codes, change account
+    password) returns `403` for a wrong password, not `401` -- the
+    bearer token is still valid, this is a failed business-rule check,
+    not an authentication failure. Getting this wrong is a real bug this
+    project hit: the frontend's `useApiFetch` force-logs-out on *any*
+    `401`, so a merely mistyped confirmation password was silently
+    ending the whole admin session instead of showing an inline error.
+    `401` stays reserved for an actually missing/invalid/expired bearer
+    token.
+
+**Password reset via email (#78).** Requires SMTP configured
+(`/admin/settings?tab=general`, or seeded from `SMTP_*` env vars, see
+[Docker / Build](#docker--build)) and the target account to have an
+`email` set (`PUT /api/admin/account/email`). `POST
+/api/admin/forgot-password` always responds identically whether or not
+the address matches an account, so it can't be used to enumerate valid
+emails; a match gets a single-use, time-limited token emailed as a
+reset link (only its SHA-256 hash stored, in `password_reset_tokens`),
+consumed by `POST /api/admin/reset-password`.
+
+**Notifications (#112).** Two independent delivery channels, each with
+their own on/off switch per event type (new user, password reset
+requested/completed, client registered/approved) --
+`/admin/settings?tab=notifications`:
+  - **Email** reuses the same SMTP config as password reset, sent to
+    every admin account with an email on file.
+  - **Webhook** (`GET`/`PUT /api/admin/settings/webhook`): one URL, an
+    optional secret, and a customizable JSON payload template
+    (`{event}`/`{subject}`/`{message}`/`{timestamp}` placeholders,
+    each JSON-string-escaped before substitution so the template
+    supplies the surrounding quotes) -- `internal/notify` renders and
+    sends it. Both the secret and the SMTP password are write-only
+    (encrypted at rest, never echoed back to the frontend); saving with
+    an empty value keeps whatever was already stored rather than
+    clearing it.
+
+**Configurable logging destination (#113).** `/admin/settings` (General
+tab) can point the shared logger at a file in addition to stdout
+(`internal/logging.Configure`, applies process-wide immediately, no
+restart) -- empty means stdout only, the default. Can also be seeded
+from `LOG_PATH` on first boot; see [Docker / Build](#docker--build).
 
 ---
 
@@ -998,7 +1148,33 @@ handling) resolve correctly even without the OS's own zoneinfo files.
 `DB_PATH` (default `/data/mullet.db`, a mounted volume in the Docker
 image) and `PORT` (default `8080`) are the two settings that must come
 from the environment, since the server needs them before it can read
-anything from its own database.
+anything from its own database. `UPLOADS_DIR` and `LOG_PATH` default to
+`/data/uploads` and `/data/logs/mullet.log` respectively -- everything
+the server needs to keep lives under the one `/data` volume.
+`docker-compose.yml`'s `ports`/`environment` both reference the same
+`${PORT:-8080}` rather than two independently hardcoded `8080`s that
+happened to share a name, so one value actually controls the host
+mapping and the container's own listen port together.
+
+**Env var seeding, seed-once-then-admin-wins.** `SMTP_HOST`/`_PORT`/
+`_USERNAME`/`_PASSWORD`/`_FROM_ADDRESS`/`_TLS_MODE` and `LOG_PATH` only
+take effect if nothing has ever been saved for that setting via the
+admin UI (`db.SeedSMTPConfigFromEnv`/`db.SeedLogFilePathFromEnv`, called
+once at startup, after migrations) -- a fresh deployment gets working
+mail and file logging straight from `docker-compose.yml`, but once an
+admin edits either via Settings, the database is the permanent source
+of truth from then on; a later restart or redeploy never silently
+reverts what they set. `logging.Configure` creates a log file's parent
+directory if it doesn't exist (needed for the `/data/logs/` default,
+and generally more forgiving of any path an admin types by hand).
+`AUTH_DISABLED`/`CORS_ORIGINS` (`internal/config`) round out the
+remaining env vars -- see `docker-compose.yml` for the full list with
+inline explanations.
+
+No secret needs to be generated or supplied by hand for any of this --
+the JWT signing key (see [Auth Model](#auth-model-built)) auto-generates
+and persists into the database on first boot, which is itself inside
+the `/data` volume via `DB_PATH`.
 
 ---
 
@@ -1008,20 +1184,34 @@ anything from its own database.
 cmd/server/            Entry point: config, migrations, plugin registration, router, serve
 internal/
   api/                 HTTP handlers, router, auth middleware, SPA fallback
-  auth/                JWT issuing/parsing, password hashing, JWT secret persistence
-  config/               Environment-variable config loading
-  db/                   SQLite open/migrate, typed shape writers, generic shape reader,
-                         plugin instance CRUD, settings
-  db/migrations/        Numbered .sql files, applied once each on startup
-  plugins/data/          DataPlugin interface + registry
-    clock/  openmeteo/  openweathermap/  icsfeed/     One package per compiled-in plugin
-  scheduler/             Per-instance fetch loop, hot reload, manual test-fetch
-  shapes/                Framework-owned data contract structs
+  auth/                JWT issuing/parsing, password hashing, JWT/TOTP secret persistence
+  config/              Environment-variable config loading (incl. SMTP/log-path seeding)
+  db/                  SQLite open/migrate, typed shape writers, generic shape reader,
+                       plugin instance CRUD, settings (SMTP, webhook, notifications, users, TOTP)
+  db/migrations/       Numbered .sql files, applied once each on startup
+  email/               SMTP client for password reset + notification email
+  logging/             Points the shared logger at a file (Settings-configurable) in
+                       addition to stdout
+  notify/              Renders and sends outgoing webhook notifications
+  oauth/               Generic OAuth2 authorization-code handler (any AuthType: "oauth2" plugin)
+  plugins/data/        DataPlugin interface + registry
+    clock/  openmeteo/  openweathermap/  icsfeed/  homeassistant/
+    msgraphcalendar/  msgraphtodo/  msgraphclient/   One package per compiled-in plugin
+                                                      (msgraphclient is a shared Graph API
+                                                      helper, not a plugin itself)
+    exampleplugin/     Reference template for docs/plugin-development.md -- not
+                       compiled into the shipped binary
+  scheduler/           Per-instance fetch loop, hot reload, manual test-fetch
+  shapes/              Framework-owned data contract structs
 web/
   src/
-    admin/               Admin SPA: pages, layout, auth context, its own static theme (adminTheme.css)
-    display/             Display SPA (currently a placeholder — see Display Hierarchy)
-    shared/               Types and hooks shared by both (theme tokens, plugin data hooks)
+    admin/             Admin SPA: pages, layout, auth context, its own static theme (adminTheme.css)
+    display/           Display SPA: the real grid engine, live widget rendering
+    plugins/           UI plugin implementations, one folder per widget, plus
+                       shared/ (cross-widget helpers) and example-widget/ (a
+                       plugin-development.md reference template, not registered)
+    register/          Browser-based client registration (/register)
+    shared/            Types and hooks shared across apps (theme tokens, plugin data hooks)
 ```
 
 ---
@@ -1062,7 +1252,11 @@ noted here so that doc's specifics aren't taken as current fact.
   proposal didn't have -- a card needs to know *which* configured plugin
   instance to read from (there can be more than one of the same plugin
   type, e.g. two `ics-feed` instances for two calendars), not just which
-  UI plugin renders it.
+  UI plugin renders it. Extended further by #97: a card whose widget
+  opts into `supportsMultiDataSource` can bind to *several* instances at
+  once via the `card_data_sources` join table, with the singular FK kept
+  in sync with the first one so every other widget's single-source
+  assumption keeps holding -- see [SQLite Schema](#sqlite-schema).
 - **`displays.show_top_bar`/`show_bottom_bar`** (#19) aren't in the
   proposal's `displays` table at all -- the fixed top/bottom bar zones
   were described only in the Grid System diagram, with no way to turn

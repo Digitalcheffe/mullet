@@ -122,10 +122,12 @@ func (s *Scheduler) Reload() error {
 
 // TestInstance runs one configure+fetch+write cycle for instanceID
 // immediately and synchronously, returning the outcome. Backs the admin
-// API's "test connection" action. Goes through the same
-// Registry.WithPlugin serialization as the scheduler's own ticks, so a
-// manual test can never interleave Configure()/Fetch() with a scheduled
-// run (or another test) on the plugin type's one shared object.
+// API's "test connection" action. Routes through the same fetchOnce as
+// the scheduler's own ticks, which resolves and applies this instance's
+// config immediately before Fetch inside one Registry.WithPlugin lock --
+// so a manual test can never run against a different instance's config,
+// nor interleave with a scheduled run (or another test) on the plugin
+// type's one shared object.
 func (s *Scheduler) TestInstance(ctx context.Context, instanceID int) error {
 	status, err := db.GetPluginInstance(s.db, instanceID)
 	if err != nil {
@@ -137,13 +139,6 @@ func (s *Scheduler) TestInstance(ctx context.Context, instanceID int) error {
 		PluginID:        status.PluginID,
 		Config:          status.Config,
 		RefreshInterval: status.RefreshInterval,
-	}
-
-	if err := s.configureInstance(ctx, inst); err != nil {
-		if rerr := db.RecordFetchError(s.db, inst.ID, err); rerr != nil {
-			log.Printf("scheduler: recording fetch error for instance %d: %v", inst.ID, rerr)
-		}
-		return err
 	}
 
 	return s.fetchOnce(ctx, inst)
@@ -161,35 +156,51 @@ func (s *Scheduler) Stop() {
 	s.wg.Wait()
 }
 
-// configureInstance parses inst's stored config JSON and applies it to
-// its plugin, serialized via Registry.WithPlugin. For an OAuth2-type
-// plugin, it first injects a fresh access token under the well-known
+// resolveConfig parses inst's stored config JSON and, for an OAuth2-type
+// plugin, injects a fresh access token under the well-known
 // "access_token" config key -- EnsureFreshToken transparently refreshes
-// the stored token if it's expiring soon, so the plugin's own Configure
+// the stored token if it's expiring soon, so a plugin's own Configure
 // never has to think about token lifetime, only about reading the token
-// out of cfg like any other credential.
-func (s *Scheduler) configureInstance(ctx context.Context, inst db.PluginInstance) error {
+// out of cfg like any other credential. Touches only inst and the
+// database -- never the shared plugin object -- so it's safe to call
+// without going through Registry.WithPlugin.
+func (s *Scheduler) resolveConfig(ctx context.Context, inst db.PluginInstance) (map[string]any, error) {
 	cfg := map[string]any{}
 	if inst.Config != "" {
 		if err := json.Unmarshal([]byte(inst.Config), &cfg); err != nil {
-			return fmt.Errorf("parsing config: %w", err)
+			return nil, fmt.Errorf("parsing config: %w", err)
 		}
 	}
 
 	plugin, ok := s.registry.Get(inst.PluginID)
 	if !ok {
-		return fmt.Errorf("plugin %q not registered", inst.PluginID)
+		return nil, fmt.Errorf("plugin %q not registered", inst.PluginID)
 	}
 	if manifest := plugin.Manifest(); manifest.AuthType == "oauth2" {
 		oauthCfg, err := oauth.ConfigFromManifest(manifest, inst.Config, "")
 		if err != nil {
-			return fmt.Errorf("building oauth config: %w", err)
+			return nil, fmt.Errorf("building oauth config: %w", err)
 		}
 		token, err := oauth.EnsureFreshToken(ctx, s.db, inst.ID, oauthCfg)
 		if err != nil {
-			return fmt.Errorf("getting oauth token: %w", err)
+			return nil, fmt.Errorf("getting oauth token: %w", err)
 		}
 		cfg["access_token"] = token
+	}
+	return cfg, nil
+}
+
+// configureInstance resolves inst's config and applies it to its plugin,
+// serialized via Registry.WithPlugin. Used by Reload() as an early,
+// fail-fast check (skip starting an instance's goroutine at all if its
+// config is invalid) -- fetchOnce below is what actually matters for
+// correctness on every subsequent tick, since it re-resolves and
+// re-applies config immediately before every Fetch rather than relying
+// on whatever this call last left the shared plugin object holding.
+func (s *Scheduler) configureInstance(ctx context.Context, inst db.PluginInstance) error {
+	cfg, err := s.resolveConfig(ctx, inst)
+	if err != nil {
+		return err
 	}
 
 	ok, err := s.registry.WithPlugin(inst.PluginID, func(p plugindata.DataPlugin) error {
@@ -219,14 +230,33 @@ func (s *Scheduler) run(ctx context.Context, inst db.PluginInstance, interval ti
 	}
 }
 
-// fetchOnce runs a single fetch/write cycle for one plugin instance,
-// serialized via Registry.WithPlugin. It never panics -- a failing
-// plugin logs and records its error without taking down the scheduler --
-// but does return that error, for TestInstance's benefit.
+// fetchOnce runs a single configure+fetch+write cycle for one plugin
+// instance. Configure and Fetch run inside one Registry.WithPlugin lock,
+// immediately back to back, rather than as two separate locked calls --
+// every instance of a plugin type shares one mutable plugin object (see
+// registry.go), so configuring and fetching non-atomically would leave a
+// window where a *different* instance's Configure() could land in
+// between this instance's own Configure() and Fetch(), silently making
+// this fetch run against that other instance's settings instead of its
+// own. It never panics -- a failing plugin logs and records its error
+// without taking down the scheduler -- but does return that error, for
+// TestInstance's benefit.
 func (s *Scheduler) fetchOnce(ctx context.Context, inst db.PluginInstance) error {
+	cfg, err := s.resolveConfig(ctx, inst)
+	if err != nil {
+		log.Printf("scheduler: plugin %q (instance %d) configure failed: %v", inst.PluginID, inst.ID, err)
+		if rerr := db.RecordFetchError(s.db, inst.ID, err); rerr != nil {
+			log.Printf("scheduler: recording fetch error for instance %d: %v", inst.ID, rerr)
+		}
+		return err
+	}
+
 	var shapeRows map[string][]any
 
 	ok, fetchErr := s.registry.WithPlugin(inst.PluginID, func(p plugindata.DataPlugin) error {
+		if err := p.Configure(cfg); err != nil {
+			return err
+		}
 		var err error
 		shapeRows, err = p.Fetch(ctx)
 		return err
@@ -240,7 +270,7 @@ func (s *Scheduler) fetchOnce(ctx context.Context, inst db.PluginInstance) error
 		return err
 	}
 	if fetchErr != nil {
-		log.Printf("scheduler: plugin %q (instance %d) fetch failed: %v", inst.PluginID, inst.ID, fetchErr)
+		log.Printf("scheduler: plugin %q (instance %d) configure/fetch failed: %v", inst.PluginID, inst.ID, fetchErr)
 		if rerr := db.RecordFetchError(s.db, inst.ID, fetchErr); rerr != nil {
 			log.Printf("scheduler: recording fetch error for instance %d: %v", inst.ID, rerr)
 		}

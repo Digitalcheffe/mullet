@@ -245,7 +245,7 @@ func TestDeletingDisplayCascadesToScreensAndCards(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateScreen: %v", err)
 	}
-	cardID, err := CreateCard(sqldb, screenID, "clock", nil, 1, 1, 4, 3, "{}", nil, nil, nil, nil)
+	cardID, err := CreateCard(sqldb, screenID, "clock", nil, 1, 1, 4, 3, "{}", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateCard: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestCardCRUD(t *testing.T) {
 	}
 
 	override := `{"accentColor":"#f00"}`
-	id, err := CreateCard(sqldb, screenID, "weather-forecast", &instanceID, 1, 1, 8, 4, `{"days":5}`, &override, nil, nil, nil)
+	id, err := CreateCard(sqldb, screenID, "weather-forecast", &instanceID, 1, 1, 8, 4, `{"days":5}`, &override, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateCard: %v", err)
 	}
@@ -306,7 +306,7 @@ func TestCardCRUD(t *testing.T) {
 		t.Fatalf("cards = %+v, want 1 entry", cards)
 	}
 
-	if err := UpdateCard(sqldb, id, "weather-forecast", nil, 2, 2, 6, 3, `{"days":3}`, nil, nil, nil, nil); err != nil {
+	if err := UpdateCard(sqldb, id, "weather-forecast", nil, 2, 2, 6, 3, `{"days":3}`, nil, nil, nil); err != nil {
 		t.Fatalf("UpdateCard: %v", err)
 	}
 	got, _ = GetCard(sqldb, id)
@@ -343,7 +343,7 @@ func TestCardHeaderRoundTrip(t *testing.T) {
 		t.Fatalf("CreateScreen: %v", err)
 	}
 
-	id, err := CreateCard(sqldb, screenID, "clock", nil, 1, 1, 4, 3, "{}", nil, nil, nil, nil)
+	id, err := CreateCard(sqldb, screenID, "clock", nil, 1, 1, 4, 3, "{}", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateCard: %v", err)
 	}
@@ -351,38 +351,38 @@ func TestCardHeaderRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCard: %v", err)
 	}
-	if got.HeaderText != nil || got.HeaderValign != nil || got.HeaderHalign != nil {
-		t.Errorf("GetCard header fields = (%v, %v, %v), want all nil by default", got.HeaderText, got.HeaderValign, got.HeaderHalign)
+	if got.HeaderText != nil || got.HeaderHalign != nil {
+		t.Errorf("GetCard header fields = (%v, %v), want all nil by default", got.HeaderText, got.HeaderHalign)
 	}
 
-	text, valign, halign := "Kitchen Calendar", "top", "left"
-	if err := UpdateCard(sqldb, id, "clock", nil, 1, 1, 4, 3, "{}", nil, &text, &valign, &halign); err != nil {
+	text, halign := "Kitchen Calendar", "left"
+	if err := UpdateCard(sqldb, id, "clock", nil, 1, 1, 4, 3, "{}", nil, &text, &halign); err != nil {
 		t.Fatalf("UpdateCard (set header): %v", err)
 	}
 	got, err = GetCard(sqldb, id)
 	if err != nil {
 		t.Fatalf("GetCard: %v", err)
 	}
-	if got.HeaderText == nil || *got.HeaderText != text || got.HeaderValign == nil || *got.HeaderValign != valign || got.HeaderHalign == nil || *got.HeaderHalign != halign {
-		t.Errorf("GetCard header fields = (%v, %v, %v), want (%q, %q, %q)", got.HeaderText, got.HeaderValign, got.HeaderHalign, text, valign, halign)
+	if got.HeaderText == nil || *got.HeaderText != text || got.HeaderHalign == nil || *got.HeaderHalign != halign {
+		t.Errorf("GetCard header fields = (%v, %v), want (%q, %q)", got.HeaderText, got.HeaderHalign, text, halign)
 	}
 
-	if err := UpdateCard(sqldb, id, "clock", nil, 1, 1, 4, 3, "{}", nil, nil, nil, nil); err != nil {
+	if err := UpdateCard(sqldb, id, "clock", nil, 1, 1, 4, 3, "{}", nil, nil, nil); err != nil {
 		t.Fatalf("UpdateCard (clear header): %v", err)
 	}
 	got, err = GetCard(sqldb, id)
 	if err != nil {
 		t.Fatalf("GetCard: %v", err)
 	}
-	if got.HeaderText != nil || got.HeaderValign != nil || got.HeaderHalign != nil {
-		t.Errorf("GetCard header fields after clearing = (%v, %v, %v), want all nil", got.HeaderText, got.HeaderValign, got.HeaderHalign)
+	if got.HeaderText != nil || got.HeaderHalign != nil {
+		t.Errorf("GetCard header fields after clearing = (%v, %v), want all nil", got.HeaderText, got.HeaderHalign)
 	}
 }
 
 func TestCreateCardUnknownScreenReturnsErrInUse(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	if _, err := CreateCard(sqldb, 9999, "clock", nil, 1, 1, 4, 3, "{}", nil, nil, nil, nil); !errors.Is(err, ErrInUse) {
+	if _, err := CreateCard(sqldb, 9999, "clock", nil, 1, 1, 4, 3, "{}", nil, nil, nil); !errors.Is(err, ErrInUse) {
 		t.Errorf("CreateCard(unknown screen) = %v, want ErrInUse", err)
 	}
 }
@@ -400,7 +400,7 @@ func TestCreateCardUnknownDataPluginInstanceReturnsErrInUse(t *testing.T) {
 	}
 
 	missing := 9999
-	if _, err := CreateCard(sqldb, screenID, "weather-forecast", &missing, 1, 1, 4, 3, "{}", nil, nil, nil, nil); !errors.Is(err, ErrInUse) {
+	if _, err := CreateCard(sqldb, screenID, "weather-forecast", &missing, 1, 1, 4, 3, "{}", nil, nil, nil); !errors.Is(err, ErrInUse) {
 		t.Errorf("CreateCard(unknown data plugin instance) = %v, want ErrInUse", err)
 	}
 }
@@ -408,7 +408,7 @@ func TestCreateCardUnknownDataPluginInstanceReturnsErrInUse(t *testing.T) {
 func TestUpdateDeleteMissingCardReturnsErrNotFound(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	if err := UpdateCard(sqldb, 9999, "clock", nil, 1, 1, 4, 3, "{}", nil, nil, nil, nil); !errors.Is(err, ErrNotFound) {
+	if err := UpdateCard(sqldb, 9999, "clock", nil, 1, 1, 4, 3, "{}", nil, nil, nil); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateCard(missing) = %v, want ErrNotFound", err)
 	}
 	if err := DeleteCard(sqldb, 9999); !errors.Is(err, ErrNotFound) {
@@ -431,7 +431,7 @@ func TestDeletingDataPluginInstanceNullsCardReference(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatePluginInstance: %v", err)
 	}
-	cardID, err := CreateCard(sqldb, screenID, "weather-forecast", &instanceID, 1, 1, 4, 3, "{}", nil, nil, nil, nil)
+	cardID, err := CreateCard(sqldb, screenID, "weather-forecast", &instanceID, 1, 1, 4, 3, "{}", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateCard: %v", err)
 	}
@@ -473,7 +473,7 @@ func TestCardDataSources(t *testing.T) {
 		t.Fatalf("CreatePluginInstance B: %v", err)
 	}
 
-	cardID, err := CreateCard(sqldb, screenID, "calendar-agenda", nil, 1, 1, 6, 8, "{}", nil, nil, nil, nil)
+	cardID, err := CreateCard(sqldb, screenID, "calendar-agenda", nil, 1, 1, 6, 8, "{}", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateCard: %v", err)
 	}
@@ -543,7 +543,7 @@ func TestSetCardDataSourcesUnknownInstanceReturnsErrInUse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateScreen: %v", err)
 	}
-	cardID, err := CreateCard(sqldb, screenID, "calendar-agenda", nil, 1, 1, 6, 8, "{}", nil, nil, nil, nil)
+	cardID, err := CreateCard(sqldb, screenID, "calendar-agenda", nil, 1, 1, 6, 8, "{}", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateCard: %v", err)
 	}

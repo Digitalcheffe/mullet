@@ -352,11 +352,12 @@ type Card struct {
 	Config               string
 	ThemeOverride        *string
 	// HeaderText nil or empty means no header renders at all (issue
-	// #145) -- HeaderValign/HeaderHalign are meaningless without it, but
-	// aren't independently validated against that, the same way an
-	// unused ThemeOverride key isn't rejected either.
+	// #145) -- HeaderHalign is meaningless without it, but isn't
+	// independently validated against that, the same way an unused
+	// ThemeOverride key isn't rejected either. There's no HeaderValign
+	// (issue #154): a header always renders in its own reserved strip at
+	// the top of the card, never as a middle/bottom overlay.
 	HeaderText   *string
-	HeaderValign *string
 	HeaderHalign *string
 }
 
@@ -364,14 +365,14 @@ func scanCard(row interface{ Scan(...any) error }) (Card, error) {
 	var c Card
 	if err := row.Scan(
 		&c.ID, &c.ScreenID, &c.UIPluginID, &c.DataPluginInstanceID, &c.X, &c.Y, &c.W, &c.H, &c.Config, &c.ThemeOverride,
-		&c.HeaderText, &c.HeaderValign, &c.HeaderHalign,
+		&c.HeaderText, &c.HeaderHalign,
 	); err != nil {
 		return Card{}, err
 	}
 	return c, nil
 }
 
-const cardColumns = `id, screen_id, ui_plugin_id, data_plugin_instance_id, x, y, w, h, config, theme_override, header_text, header_valign, header_halign`
+const cardColumns = `id, screen_id, ui_plugin_id, data_plugin_instance_id, x, y, w, h, config, theme_override, header_text, header_halign`
 
 // ListCardsByScreen returns every card placed on screenID.
 func ListCardsByScreen(sqldb *sql.DB, screenID int) ([]Card, error) {
@@ -407,12 +408,12 @@ func GetCard(sqldb *sql.DB, id int) (Card, error) {
 
 // CreateCard inserts a new card on screenID and returns its ID. Returns
 // ErrInUse if screenID or a non-nil dataPluginInstanceID doesn't exist.
-// headerText/headerValign/headerHalign nil means no header (issue #145).
-func CreateCard(sqldb *sql.DB, screenID int, uiPluginID string, dataPluginInstanceID *int, x, y, w, h int, config string, themeOverride, headerText, headerValign, headerHalign *string) (int, error) {
+// headerText/headerHalign nil means no header (issue #145).
+func CreateCard(sqldb *sql.DB, screenID int, uiPluginID string, dataPluginInstanceID *int, x, y, w, h int, config string, themeOverride, headerText, headerHalign *string) (int, error) {
 	result, err := sqldb.Exec(
-		`INSERT INTO cards (screen_id, ui_plugin_id, data_plugin_instance_id, x, y, w, h, config, theme_override, header_text, header_valign, header_halign)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		screenID, uiPluginID, dataPluginInstanceID, x, y, w, h, config, themeOverride, headerText, headerValign, headerHalign,
+		`INSERT INTO cards (screen_id, ui_plugin_id, data_plugin_instance_id, x, y, w, h, config, theme_override, header_text, header_halign)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		screenID, uiPluginID, dataPluginInstanceID, x, y, w, h, config, themeOverride, headerText, headerHalign,
 	)
 	if err != nil {
 		if isForeignKeyViolation(err) {
@@ -431,10 +432,10 @@ func CreateCard(sqldb *sql.DB, screenID int, uiPluginID string, dataPluginInstan
 // including screen_id -- a card doesn't move between screens; remove
 // and recreate it instead). Returns ErrNotFound if id doesn't exist, or
 // ErrInUse if a non-nil dataPluginInstanceID doesn't exist.
-func UpdateCard(sqldb *sql.DB, id int, uiPluginID string, dataPluginInstanceID *int, x, y, w, h int, config string, themeOverride, headerText, headerValign, headerHalign *string) error {
+func UpdateCard(sqldb *sql.DB, id int, uiPluginID string, dataPluginInstanceID *int, x, y, w, h int, config string, themeOverride, headerText, headerHalign *string) error {
 	result, err := sqldb.Exec(
-		`UPDATE cards SET ui_plugin_id = ?, data_plugin_instance_id = ?, x = ?, y = ?, w = ?, h = ?, config = ?, theme_override = ?, header_text = ?, header_valign = ?, header_halign = ? WHERE id = ?`,
-		uiPluginID, dataPluginInstanceID, x, y, w, h, config, themeOverride, headerText, headerValign, headerHalign, id,
+		`UPDATE cards SET ui_plugin_id = ?, data_plugin_instance_id = ?, x = ?, y = ?, w = ?, h = ?, config = ?, theme_override = ?, header_text = ?, header_halign = ? WHERE id = ?`,
+		uiPluginID, dataPluginInstanceID, x, y, w, h, config, themeOverride, headerText, headerHalign, id,
 	)
 	if err != nil {
 		if isForeignKeyViolation(err) {

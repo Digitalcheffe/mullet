@@ -43,9 +43,10 @@ interface Card {
   config: Record<string, unknown>;
   theme_override?: Partial<ThemeTokens>;
   // Optional card header (issue #145) -- absent/empty header_text means
-  // no header renders at all.
+  // no header renders at all. Always renders in its own reserved strip
+  // at the top of the card (issue #154) -- header_halign is the only
+  // alignment control.
   header_text?: string;
-  header_valign?: 'top' | 'middle' | 'bottom';
   header_halign?: 'left' | 'center' | 'right';
 }
 
@@ -397,7 +398,6 @@ export default function DesignerPage() {
       config: unknown;
       theme_override: Partial<ThemeTokens> | null;
       header_text: string | null;
-      header_valign: 'top' | 'middle' | 'bottom' | null;
       header_halign: 'left' | 'center' | 'right' | null;
     },
   ) {
@@ -421,7 +421,6 @@ export default function DesignerPage() {
           config: values.config,
           theme_override: values.theme_override,
           header_text: values.header_text,
-          header_valign: values.header_valign,
           header_halign: values.header_halign,
         }),
       });
@@ -683,13 +682,11 @@ interface CardSettingsPanelProps {
     config: unknown;
     theme_override: Partial<ThemeTokens> | null;
     header_text: string | null;
-    header_valign: 'top' | 'middle' | 'bottom' | null;
     header_halign: 'left' | 'center' | 'right' | null;
   }) => Promise<void>;
   onCancel: () => void;
 }
 
-const HEADER_VALIGNS = ['top', 'middle', 'bottom'] as const;
 const HEADER_HALIGNS = ['left', 'center', 'right'] as const;
 
 // Card-level overrides stay narrow by design (see architecture.md
@@ -835,7 +832,6 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
   const [overrideEnabled, setOverrideEnabled] = useState(card.theme_override != null);
   const [themeOverride, setThemeOverride] = useState<Partial<ThemeTokens>>(card.theme_override ?? {});
   const [headerText, setHeaderText] = useState(card.header_text ?? '');
-  const [headerValign, setHeaderValign] = useState<(typeof HEADER_VALIGNS)[number]>(card.header_valign ?? 'top');
   const [headerHalign, setHeaderHalign] = useState<(typeof HEADER_HALIGNS)[number]>(card.header_halign ?? 'left');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -854,7 +850,6 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
       const trimmedHeaderText = headerText.trim();
       const headerFields = {
         header_text: trimmedHeaderText === '' ? null : trimmedHeaderText,
-        header_valign: trimmedHeaderText === '' ? null : headerValign,
         header_halign: trimmedHeaderText === '' ? null : headerHalign,
       };
       await onSave(
@@ -950,28 +945,22 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
           onChange={(e) => setHeaderText(e.target.value)}
           placeholder="e.g. Kitchen Calendar"
         />
-        <span className="field-help">Optional label shown over the card. Leave blank for no header.</span>
+        <span className="field-help">Optional label shown at the top of the card. Leave blank for no header.</span>
       </label>
       {headerText.trim() !== '' && (
         <div className="field">
           <span className="kicker">Header alignment</span>
-          <div className="header-align-grid">
-            {HEADER_VALIGNS.map((v) =>
-              HEADER_HALIGNS.map((h) => (
-                <button
-                  type="button"
-                  key={`${v}-${h}`}
-                  className={`header-align-cell${headerValign === v && headerHalign === h ? ' selected' : ''}`}
-                  aria-label={`${v} ${h}`}
-                  onClick={() => {
-                    setHeaderValign(v);
-                    setHeaderHalign(h);
-                  }}
-                >
-                  <span className="header-align-dot" />
-                </button>
-              )),
-            )}
+          <div className="header-halign-row">
+            {HEADER_HALIGNS.map((h) => (
+              <button
+                type="button"
+                key={h}
+                className={`header-halign-btn${headerHalign === h ? ' selected' : ''}`}
+                onClick={() => setHeaderHalign(h)}
+              >
+                {h[0].toUpperCase() + h.slice(1)}
+              </button>
+            ))}
           </div>
         </div>
       )}

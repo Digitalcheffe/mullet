@@ -142,6 +142,11 @@ export default function DesignerPage() {
   const [loading, setLoading] = useState(true);
   const [selectedCardId, setSelectedCardId] = useState<number | null>(null);
   const [screenSettingsOpen, setScreenSettingsOpen] = useState(false);
+  // Collapsing the palette (issue #160) gives the canvas the full
+  // available height -- not persisted, since which screen someone's
+  // actively placing cards on changes far more often than a sidebar's
+  // pin state does.
+  const [paletteCollapsed, setPaletteCollapsed] = useState(false);
   const draggingPluginRef = useRef<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -543,29 +548,43 @@ export default function DesignerPage() {
       </div>
 
       <div className="designer-layout">
-        <aside className="designer-palette">
-          <h2>UI Plugins</h2>
+        <aside className={`designer-palette${paletteCollapsed ? ' collapsed' : ''}`}>
+          <div className="designer-palette-header">
+            <h2>UI Plugins</h2>
+            <button
+              type="button"
+              className="designer-palette-collapse"
+              onClick={() => setPaletteCollapsed((c) => !c)}
+              title={paletteCollapsed ? 'Expand plugin list' : 'Collapse plugin list'}
+              aria-label={paletteCollapsed ? 'Expand plugin list' : 'Collapse plugin list'}
+            >
+              ▾
+            </button>
+          </div>
           <p className="palette-help">
             Drag onto the grid to place a card, or double-click to add it instantly
             {screen.layout_mode === 'simple' ? ' at Medium size.' : '.'}
           </p>
-          {uiPlugins.map((plugin) => (
-            <div
-              key={plugin.id}
-              className="palette-item"
-              draggable
-              onDragStart={(e) => {
-                draggingPluginRef.current = plugin.id;
-                e.dataTransfer.effectAllowed = 'copy';
-                e.dataTransfer.setData('text/plain', plugin.id);
-              }}
-              onDoubleClick={() => handlePaletteDoubleClick(plugin.id)}
-            >
-              {plugin.name}
-            </div>
-          ))}
+          <div className="palette-items">
+            {uiPlugins.map((plugin) => (
+              <div
+                key={plugin.id}
+                className="palette-item"
+                draggable
+                onDragStart={(e) => {
+                  draggingPluginRef.current = plugin.id;
+                  e.dataTransfer.effectAllowed = 'copy';
+                  e.dataTransfer.setData('text/plain', plugin.id);
+                }}
+                onDoubleClick={() => handlePaletteDoubleClick(plugin.id)}
+              >
+                {plugin.name}
+              </div>
+            ))}
+          </div>
         </aside>
 
+        <h2 className="designer-canvas-title">Designer</h2>
         <div
           className="designer-grid-wrap"
           ref={containerRef}

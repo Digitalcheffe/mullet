@@ -75,3 +75,25 @@ export function SettingsIcon(props: IconProps) {
     </svg>
   );
 }
+
+// Toggles the sidebar between its collapsed icon-only rail and the
+// expanded, labeled drawer (issue #159).
+export function MenuIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <line x1="3" y1="6" x2="17" y2="6" />
+      <line x1="3" y1="10" x2="17" y2="10" />
+      <line x1="3" y1="14" x2="17" y2="14" />
+    </svg>
+  );
+}
+
+// Pins the expanded sidebar open (issue #159) -- filled when pinned, so
+// its own state doubles as feedback without a separate label.
+export function PinIcon({ filled, ...props }: IconProps & { filled?: boolean }) {
+  return (
+    <svg {...base} fill={filled ? 'currentColor' : 'none'} {...props}>
+      <path d="M8.5 3.5h3l.5 5.5 2.5 2v1.5H10.8V17l-.8 1.5-.8-1.5v-4.5H5.5V11l2.5-2z" strokeLinejoin="round" />
+    </svg>
+  );
+}

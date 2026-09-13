@@ -1,7 +1,15 @@
+/* Bounded to the viewport (minus .admin-content's own 30px top/bottom
+   padding) rather than growing however tall its content needs -- lets
+   .designer-grid-wrap below claim exactly whatever's left after the
+   toolbar/palette/title, and scroll internally itself if a screen's
+   placed cards exceed that, instead of the whole admin page growing
+   taller than the window and cards reading as "hanging off the
+   bottom" before you scroll down to find them. */
 .designer-page {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  height: calc(100svh - 60px);
 }
 
 .designer-toolbar {
@@ -134,56 +142,129 @@
   padding: 7px 12px;
 }
 
+/* Palette-above-canvas (issue #160) rather than side-by-side -- a
+   column stack reads unambiguously as "tools on top, workspace below"
+   in a way a side column didn't (it looked like a stray block rather
+   than something separate from the canvas). */
 .designer-layout {
   display: flex;
-  align-items: flex-start;
-  gap: 20px;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
 }
 
 .designer-palette {
-  width: 180px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 14px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
-  position: sticky;
-  top: 0;
 }
 
-.designer-palette h2 {
+.designer-palette-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.designer-palette-header h2 {
   font: 700 13px var(--font-heading);
+}
+
+.designer-palette-collapse {
+  margin-left: auto;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.designer-palette-collapse:hover {
+  color: var(--ink);
+  background: var(--surface-alt);
+}
+.designer-palette.collapsed .designer-palette-collapse {
+  transform: rotate(180deg);
 }
 
 .palette-help {
   font: 500 11px var(--font-body);
   color: var(--ink-soft);
-  margin: -4px 0 4px;
+}
+
+/* Two rows, scrolling horizontally, rather than one cramped row or a
+   vertical list -- grid-auto-flow: column fills a row, wraps into a
+   second, then starts a new column, which is exactly "double row,
+   scroll left/right" (a flex row can't do the "wrap after 2" part
+   without an explicit row count the way grid can). */
+.palette-items {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, auto);
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+}
+
+.designer-palette.collapsed .palette-help,
+.designer-palette.collapsed .palette-items {
+  display: none;
 }
 
 .palette-item {
-  padding: 10px 12px;
+  padding: 12px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-alt);
   font: 600 12.5px var(--font-body);
   color: var(--ink);
   cursor: grab;
+  white-space: nowrap;
+  transition: transform 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease;
+}
+.palette-item:hover {
+  border-color: var(--accent);
+  /* Same tint as .designer-grid-wrap below, so hovering a palette item
+     visually previews "this is what you're about to add to the
+     canvas." */
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-alt));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
 }
 .palette-item:active {
   cursor: grabbing;
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+/* A title plus a visibly distinct fill/border (issue #160) so the
+   canvas unmistakably reads as "the interactive design surface,"
+   separate from the .designer-palette tools above it. */
+.designer-canvas-title {
+  font: 700 13px var(--font-heading);
+  color: var(--ink);
+  margin-bottom: 2px;
 }
 
 .designer-grid-wrap {
   flex: 1;
   min-width: 0;
-  min-height: 420px;
-  border: 1px dashed var(--border);
+  min-height: 320px;
+  overflow-y: auto;
+  border: 2px dashed var(--accent);
   border-radius: var(--radius-md);
-  background: var(--surface-alt);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-alt));
 }
 
 .designer-card {
@@ -220,16 +301,16 @@
 .card-settings-btn,
 .card-delete-btn {
   position: absolute;
-  top: 4px;
-  width: 20px;
-  height: 20px;
-  line-height: 18px;
+  top: 6px;
+  width: 30px;
+  height: 30px;
+  line-height: 28px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--ink);
-  font-size: 11px;
+  font-size: 15px;
   cursor: pointer;
   /* The card's resize handles (react-resizable's own .react-resizable-handle-*
      spans) render after these buttons in the DOM and share the same
@@ -241,10 +322,10 @@
   z-index: 2;
 }
 .card-settings-btn {
-  right: 28px;
+  right: 40px;
 }
 .card-delete-btn {
-  right: 4px;
+  right: 6px;
   color: var(--error);
 }
 .card-settings-btn:hover,

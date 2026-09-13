@@ -12,28 +12,137 @@
   height: 100svh;
 }
 
+/* Collapsed by default: a slim icon-only rail (issue #159) instead of
+   permanently eating 232px of width. .expanded (pinned) widens this
+   same in-flow element; .overlay instead takes it out of flow entirely
+   so it floats over .admin-content without shifting it -- see the
+   component doc comment for when each applies. */
 .admin-sidebar {
-  width: 232px;
+  width: 60px;
   flex: none;
   background: var(--surface-alt);
   border-right: 1px solid var(--border);
-  padding: 22px 14px;
+  padding: 16px 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   overflow-y: auto;
+  overflow-x: hidden;
+  transition: width 0.16s ease;
+}
+
+.admin-sidebar.expanded {
+  width: 232px;
+  padding: 22px 14px;
+}
+
+.admin-sidebar.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 40;
+  box-shadow: 6px 0 24px rgba(0, 0, 0, 0.18);
+  animation: admin-sidebar-slide-in 0.16s ease;
+}
+
+@keyframes admin-sidebar-slide-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.admin-sidebar-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 18, 25, 0.35);
+  z-index: 39;
+}
+
+.admin-sidebar-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 18px;
+}
+
+.admin-sidebar-toggle {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.admin-sidebar-toggle:hover {
+  color: var(--ink);
+  background: var(--surface-alt);
+}
+
+.admin-sidebar-pin {
+  margin-left: auto;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.admin-sidebar-pin:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+.admin-sidebar-pin.pinned {
+  color: var(--accent);
+}
+
+/* Everything text-bearing hides on the collapsed rail -- see
+   AdminLayout.tsx's doc comment on why labels are always in the DOM
+   (rather than conditionally rendered) and just toggled here: it lets
+   the >900px vs mobile breakpoint below override independently of
+   whatever the collapse/expand JS state happens to be. */
+.admin-sidebar:not(.expanded) .admin-nav-label,
+.admin-sidebar:not(.expanded) .admin-logo,
+.admin-sidebar:not(.expanded) .admin-sidebar-pin {
+  display: none;
+}
+.admin-sidebar:not(.expanded) .admin-nav-link {
+  justify-content: center;
+  padding: 10px 6px;
+}
+.admin-sidebar:not(.expanded) .admin-sidebar-top {
+  justify-content: center;
+}
+.admin-sidebar:not(.expanded) .admin-user-chip {
+  justify-content: center;
+  padding: 10px 0 0;
+}
+.admin-sidebar:not(.expanded) .admin-user-avatar {
+  margin: 0;
 }
 
 .admin-logo {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 0 8px 20px;
 }
 
 .admin-logo-mark {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   flex: none;
 }
@@ -122,21 +231,48 @@
     flex-direction: column;
   }
 
-  .admin-sidebar {
+  /* The collapse/pin/overlay behavior is desktop-only -- a narrow
+     screen reverts to the original always-expanded horizontal bar
+     regardless of the collapse/expand JS state, same as before issue
+     #159. */
+  .admin-sidebar,
+  .admin-sidebar.expanded,
+  .admin-sidebar.overlay {
+    position: static;
     width: auto;
     flex-direction: row;
     flex-wrap: wrap;
     border-right: none;
     border-bottom: 1px solid var(--border);
     align-items: center;
+    box-shadow: none;
+    animation: none;
+    padding: 12px 14px;
+  }
+
+  .admin-sidebar-scrim {
+    display: none;
+  }
+
+  .admin-sidebar-toggle {
+    display: none;
+  }
+
+  .admin-sidebar .admin-nav-label,
+  .admin-sidebar .admin-logo,
+  .admin-sidebar .admin-sidebar-pin {
+    display: revert;
+  }
+  .admin-sidebar .admin-nav-link {
+    justify-content: flex-start;
+    padding: 8px 10px;
+  }
+  .admin-sidebar-pin {
+    display: none !important;
   }
 
   .admin-logo {
     padding: 0 8px 0 0;
-  }
-
-  .admin-nav-link {
-    padding: 8px 10px;
   }
 
   .admin-nav-link[style] {

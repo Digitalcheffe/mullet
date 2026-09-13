@@ -56,7 +56,7 @@ type DataPluginManifest struct {
 type SetupField struct {
 	Key         string
 	Label       string
-	Type        string // "text", "select", "multi-select", "number", "toggle", "password"
+	Type        string // "text", "select", "multi-select", "number", "toggle", "password", "color"
 	Required    bool
 	Default     any
 	Placeholder string

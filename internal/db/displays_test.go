@@ -86,6 +86,9 @@ func TestDisplayCRUD(t *testing.T) {
 	if got.NightModeEnabled || got.NightStart != nil || got.NightEnd != nil || got.NightBrightness != 0.4 {
 		t.Errorf("GetDisplay night mode = %+v, want disabled/unset with 0.4 default brightness", got)
 	}
+	if !got.TransitionsEnabled {
+		t.Errorf("GetDisplay.TransitionsEnabled = %v, want true by default", got.TransitionsEnabled)
+	}
 
 	displays, err := ListDisplays(sqldb)
 	if err != nil {
@@ -95,7 +98,7 @@ func TestDisplayCRUD(t *testing.T) {
 		t.Fatalf("displays = %+v, want 1 entry", displays)
 	}
 
-	if err := UpdateDisplay(sqldb, id, "Office", "office", nil, 60, false, false, false, nil, nil, 0.4); err != nil {
+	if err := UpdateDisplay(sqldb, id, "Office", "office", nil, 60, false, false, false, nil, nil, 0.4, true); err != nil {
 		t.Fatalf("UpdateDisplay: %v", err)
 	}
 	got, _ = GetDisplay(sqldb, id)
@@ -123,7 +126,7 @@ func TestDisplayNightModeRoundTrip(t *testing.T) {
 	}
 
 	start, end := "22:00", "07:00"
-	if err := UpdateDisplay(sqldb, id, "Kitchen", "kitchen", nil, 30, true, true, true, &start, &end, 0.15); err != nil {
+	if err := UpdateDisplay(sqldb, id, "Kitchen", "kitchen", nil, 30, true, true, true, &start, &end, 0.15, true); err != nil {
 		t.Fatalf("UpdateDisplay (set night mode): %v", err)
 	}
 	got, err := GetDisplay(sqldb, id)
@@ -134,7 +137,7 @@ func TestDisplayNightModeRoundTrip(t *testing.T) {
 		t.Errorf("GetDisplay night mode = %+v, want enabled (%q, %q, 0.15)", got, start, end)
 	}
 
-	if err := UpdateDisplay(sqldb, id, "Kitchen", "kitchen", nil, 30, true, true, false, nil, nil, 0.4); err != nil {
+	if err := UpdateDisplay(sqldb, id, "Kitchen", "kitchen", nil, 30, true, true, false, nil, nil, 0.4, true); err != nil {
 		t.Fatalf("UpdateDisplay (clear night mode): %v", err)
 	}
 	got, err = GetDisplay(sqldb, id)
@@ -143,6 +146,37 @@ func TestDisplayNightModeRoundTrip(t *testing.T) {
 	}
 	if got.NightModeEnabled || got.NightStart != nil || got.NightEnd != nil {
 		t.Errorf("GetDisplay night mode after clearing = %+v, want disabled/unset", got)
+	}
+}
+
+func TestDisplayTransitionsEnabledRoundTrip(t *testing.T) {
+	sqldb := newTestDB(t)
+
+	id, err := CreateDisplay(sqldb, "Kitchen", "kitchen", nil, 30, true, true)
+	if err != nil {
+		t.Fatalf("CreateDisplay: %v", err)
+	}
+
+	if err := UpdateDisplay(sqldb, id, "Kitchen", "kitchen", nil, 30, true, true, false, nil, nil, 0.4, false); err != nil {
+		t.Fatalf("UpdateDisplay (disable transitions): %v", err)
+	}
+	got, err := GetDisplay(sqldb, id)
+	if err != nil {
+		t.Fatalf("GetDisplay: %v", err)
+	}
+	if got.TransitionsEnabled {
+		t.Errorf("GetDisplay.TransitionsEnabled = %v, want false after disabling", got.TransitionsEnabled)
+	}
+
+	if err := UpdateDisplay(sqldb, id, "Kitchen", "kitchen", nil, 30, true, true, false, nil, nil, 0.4, true); err != nil {
+		t.Fatalf("UpdateDisplay (re-enable transitions): %v", err)
+	}
+	got, err = GetDisplay(sqldb, id)
+	if err != nil {
+		t.Fatalf("GetDisplay: %v", err)
+	}
+	if !got.TransitionsEnabled {
+		t.Errorf("GetDisplay.TransitionsEnabled = %v, want true after re-enabling", got.TransitionsEnabled)
 	}
 }
 
@@ -190,7 +224,7 @@ func TestCreateDisplayUnknownThemeReturnsErrInUse(t *testing.T) {
 func TestUpdateDeleteMissingDisplayReturnsErrNotFound(t *testing.T) {
 	sqldb := newTestDB(t)
 
-	if err := UpdateDisplay(sqldb, 9999, "X", "x", nil, 30, true, true, false, nil, nil, 0.4); !errors.Is(err, ErrNotFound) {
+	if err := UpdateDisplay(sqldb, 9999, "X", "x", nil, 30, true, true, false, nil, nil, 0.4, true); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateDisplay(missing) = %v, want ErrNotFound", err)
 	}
 	if err := DeleteDisplay(sqldb, 9999); !errors.Is(err, ErrNotFound) {

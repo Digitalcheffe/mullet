@@ -140,24 +140,31 @@ type Display struct {
 	NightStart       *string
 	NightEnd         *string
 	NightBrightness  float64
+	// TransitionsEnabled (issue #171) -- the screen fade-in/card-
+	// entrance animations from issue #86, independent of the OS-level
+	// prefers-reduced-motion setting those already respect. True is
+	// every existing display's default (unchanged from before this
+	// toggle existed).
+	TransitionsEnabled bool
 }
 
 func scanDisplay(row interface{ Scan(...any) error }) (Display, error) {
 	var d Display
-	var showTopBar, showBottomBar, nightModeEnabled int
+	var showTopBar, showBottomBar, nightModeEnabled, transitionsEnabled int
 	if err := row.Scan(
 		&d.ID, &d.Name, &d.Slug, &d.ThemeID, &d.RotationSeconds, &showTopBar, &showBottomBar,
-		&nightModeEnabled, &d.NightStart, &d.NightEnd, &d.NightBrightness,
+		&nightModeEnabled, &d.NightStart, &d.NightEnd, &d.NightBrightness, &transitionsEnabled,
 	); err != nil {
 		return Display{}, err
 	}
 	d.ShowTopBar = showTopBar != 0
 	d.ShowBottomBar = showBottomBar != 0
 	d.NightModeEnabled = nightModeEnabled != 0
+	d.TransitionsEnabled = transitionsEnabled != 0
 	return d, nil
 }
 
-const displayColumns = `id, name, slug, theme_id, rotation_seconds, show_top_bar, show_bottom_bar, night_mode_enabled, night_start, night_end, night_brightness`
+const displayColumns = `id, name, slug, theme_id, rotation_seconds, show_top_bar, show_bottom_bar, night_mode_enabled, night_start, night_end, night_brightness, transitions_enabled`
 
 // ListDisplays returns every display, oldest first.
 func ListDisplays(sqldb *sql.DB) ([]Display, error) {
@@ -228,12 +235,12 @@ func CreateDisplay(sqldb *sql.DB, name, slug string, themeID *int, rotationSecon
 
 // UpdateDisplay overwrites an existing display's editable fields.
 // Returns ErrNotFound if id doesn't exist.
-func UpdateDisplay(sqldb *sql.DB, id int, name, slug string, themeID *int, rotationSeconds int, showTopBar, showBottomBar, nightModeEnabled bool, nightStart, nightEnd *string, nightBrightness float64) error {
+func UpdateDisplay(sqldb *sql.DB, id int, name, slug string, themeID *int, rotationSeconds int, showTopBar, showBottomBar, nightModeEnabled bool, nightStart, nightEnd *string, nightBrightness float64, transitionsEnabled bool) error {
 	result, err := sqldb.Exec(
 		`UPDATE displays SET name = ?, slug = ?, theme_id = ?, rotation_seconds = ?, show_top_bar = ?, show_bottom_bar = ?,
-		 night_mode_enabled = ?, night_start = ?, night_end = ?, night_brightness = ? WHERE id = ?`,
+		 night_mode_enabled = ?, night_start = ?, night_end = ?, night_brightness = ?, transitions_enabled = ? WHERE id = ?`,
 		name, slug, themeID, rotationSeconds, boolToInt(showTopBar), boolToInt(showBottomBar),
-		boolToInt(nightModeEnabled), nightStart, nightEnd, nightBrightness, id,
+		boolToInt(nightModeEnabled), nightStart, nightEnd, nightBrightness, boolToInt(transitionsEnabled), id,
 	)
 	if err != nil {
 		if isForeignKeyViolation(err) {

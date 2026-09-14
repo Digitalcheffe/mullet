@@ -64,6 +64,11 @@ export interface DisplayLayout {
   night_start?: string;
   night_end?: string;
   night_brightness: number;
+  // Toggles the screen-fade/card-entrance animations (issue #86),
+  // independent of the viewer's own prefers-reduced-motion setting,
+  // which those already respect regardless of this (issue #171). True
+  // is every display's default, unchanged from before this existed.
+  transitions_enabled: boolean;
 }
 
 interface RawLayout extends Omit<DisplayLayout, 'theme'> {

@@ -217,20 +217,23 @@ type displayRequest struct {
 	NightStart       *string  `json:"night_start"`
 	NightEnd         *string  `json:"night_end"`
 	NightBrightness  *float64 `json:"night_brightness"`
+	// TransitionsEnabled (issue #171) -- see db.Display's doc comment.
+	TransitionsEnabled bool `json:"transitions_enabled"`
 }
 
 type displayResponse struct {
-	ID               int     `json:"id"`
-	Name             string  `json:"name"`
-	Slug             string  `json:"slug"`
-	ThemeID          *int    `json:"theme_id,omitempty"`
-	RotationSeconds  int     `json:"rotation_seconds"`
-	ShowTopBar       bool    `json:"show_top_bar"`
-	ShowBottomBar    bool    `json:"show_bottom_bar"`
-	NightModeEnabled bool    `json:"night_mode_enabled"`
-	NightStart       *string `json:"night_start,omitempty"`
-	NightEnd         *string `json:"night_end,omitempty"`
-	NightBrightness  float64 `json:"night_brightness"`
+	ID                 int     `json:"id"`
+	Name               string  `json:"name"`
+	Slug               string  `json:"slug"`
+	ThemeID            *int    `json:"theme_id,omitempty"`
+	RotationSeconds    int     `json:"rotation_seconds"`
+	ShowTopBar         bool    `json:"show_top_bar"`
+	ShowBottomBar      bool    `json:"show_bottom_bar"`
+	NightModeEnabled   bool    `json:"night_mode_enabled"`
+	NightStart         *string `json:"night_start,omitempty"`
+	NightEnd           *string `json:"night_end,omitempty"`
+	NightBrightness    float64 `json:"night_brightness"`
+	TransitionsEnabled bool    `json:"transitions_enabled"`
 }
 
 func toDisplayResponse(d db.Display) displayResponse {
@@ -238,6 +241,7 @@ func toDisplayResponse(d db.Display) displayResponse {
 		ID: d.ID, Name: d.Name, Slug: d.Slug, ThemeID: d.ThemeID, RotationSeconds: d.RotationSeconds,
 		ShowTopBar: d.ShowTopBar, ShowBottomBar: d.ShowBottomBar,
 		NightModeEnabled: d.NightModeEnabled, NightStart: d.NightStart, NightEnd: d.NightEnd, NightBrightness: d.NightBrightness,
+		TransitionsEnabled: d.TransitionsEnabled,
 	}
 }
 
@@ -345,6 +349,7 @@ func handleUpdateDisplay(sqldb *sql.DB) http.HandlerFunc {
 		switch err := db.UpdateDisplay(
 			sqldb, id, req.Name, req.Slug, req.ThemeID, rotation, req.ShowTopBar, req.ShowBottomBar,
 			req.NightModeEnabled, req.NightStart, req.NightEnd, nightBrightnessOrDefault(req.NightBrightness),
+			req.TransitionsEnabled,
 		); {
 		case errors.Is(err, db.ErrNotFound):
 			http.Error(w, "not found", http.StatusNotFound)

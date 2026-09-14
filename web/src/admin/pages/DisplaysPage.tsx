@@ -23,6 +23,10 @@ interface Display {
   night_start?: string;
   night_end?: string;
   night_brightness: number;
+  // Toggles the screen-fade/card-entrance animations from issue #86,
+  // independent of the OS-level prefers-reduced-motion setting those
+  // already respect (issue #171).
+  transitions_enabled: boolean;
 }
 
 interface Screen {
@@ -51,6 +55,7 @@ interface DisplayFormValues {
   night_start: string;
   night_end: string;
   night_brightness: number;
+  transitions_enabled: boolean;
 }
 
 // Grid density (columns/row_height/gap) and layout_mode itself aren't
@@ -140,6 +145,7 @@ export default function DisplaysPage() {
         night_start: values.night_mode_enabled && values.night_start !== '' ? values.night_start : null,
         night_end: values.night_mode_enabled && values.night_end !== '' ? values.night_end : null,
         night_brightness: values.night_brightness,
+        transitions_enabled: values.transitions_enabled,
       }),
     });
     if (!res.ok) {
@@ -348,6 +354,7 @@ export default function DisplaysPage() {
                       night_start: '22:00',
                       night_end: '07:00',
                       night_brightness: 0.4,
+                      transitions_enabled: true,
                     }
                   : {
                       name: displayPanel.display.name,
@@ -360,6 +367,7 @@ export default function DisplaysPage() {
                       night_start: displayPanel.display.night_start ?? '22:00',
                       night_end: displayPanel.display.night_end ?? '07:00',
                       night_brightness: displayPanel.display.night_brightness,
+                      transitions_enabled: displayPanel.display.transitions_enabled,
                     }
               }
               showNightMode={displayPanel.mode === 'edit'}
@@ -405,9 +413,10 @@ export default function DisplaysPage() {
 interface DisplayFormProps {
   themes: Theme[];
   initialValues: DisplayFormValues;
-  // Night mode needs an existing display id to mean anything -- hidden
-  // on "Add Display" (the create endpoint doesn't persist it anyway,
-  // issue #91) rather than shown but silently dropped on save.
+  // Night mode and the transitions toggle both need an existing
+  // display id to mean anything -- hidden on "Add Display" (the create
+  // endpoint doesn't persist either, issues #91/#171) rather than shown
+  // but silently dropped on save.
   showNightMode: boolean;
   submitLabel: string;
   onSubmit: (values: DisplayFormValues) => Promise<void>;
@@ -545,6 +554,18 @@ function DisplayForm({ themes, initialValues, showNightMode, submitLabel, onSubm
               </label>
             </>
           )}
+          <label className="toggle-row">
+            <span>Screen transition animations</span>
+            <input
+              type="checkbox"
+              checked={values.transitions_enabled}
+              onChange={(e) => setValues((v) => ({ ...v, transitions_enabled: e.target.checked }))}
+            />
+          </label>
+          <span className="field-help">
+            The fade-in when this display rotates to a new screen, and each card's own entrance animation. Off
+            entirely disables both, regardless of the viewer's own reduce-motion setting.
+          </span>
         </>
       )}
 

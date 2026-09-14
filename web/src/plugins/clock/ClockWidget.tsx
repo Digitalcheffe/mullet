@@ -106,12 +106,12 @@ function ClockComponent({ config, size, theme }: WidgetProps<unknown>) {
   const showDate = cfg.showDate !== false;
   const dateFormat = cfg.dateFormat ?? 'long';
   const customDateFormat = cfg.customDateFormat || 'MM/DD/YY';
-  // Matches minSize (w:2, h:1), not defaultSize (w:3, h:2) -- the
-  // previous threshold (h<=2 || w<=3) was wide enough to catch the
-  // widget's own default placement size, silently suppressing the date
-  // (and shrinking the analog face) even though there was no actual
-  // space problem, so "Show date" appeared to do nothing until a card
-  // was manually resized larger than default.
+  // Matches minSize (w:2, h:1), not defaultSize (w:3, h:2) -- shrinks
+  // the time text and analog face to leave more room at small sizes.
+  // Doesn't hide the date (issue #163): a user who deliberately sizes
+  // the card down to its minimum still wants the date there, so if it
+  // doesn't fit, .clock-widget's own overflow scrolls instead of the
+  // date silently disappearing.
   const compact = size.h <= 1 || size.w <= 2;
 
   const [now, setNow] = useState(() => new Date());
@@ -129,7 +129,7 @@ function ClockComponent({ config, size, theme }: WidgetProps<unknown>) {
       ) : (
         <span className="clock-time">{formatTime(now, format, showSeconds)}</span>
       )}
-      {showDate && !compact && <span className="clock-date">{formatDate(now, dateFormat, customDateFormat)}</span>}
+      {showDate && <span className="clock-date">{formatDate(now, dateFormat, customDateFormat)}</span>}
     </div>
   );
 }

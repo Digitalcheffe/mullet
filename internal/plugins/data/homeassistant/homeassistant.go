@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Digitalcheffe/mullet/internal/mdiicons"
 	plugindata "github.com/Digitalcheffe/mullet/internal/plugins/data"
 	"github.com/Digitalcheffe/mullet/internal/shapes"
 )
@@ -174,6 +175,7 @@ func (p *Plugin) Fetch(ctx context.Context) (map[string][]any, error) {
 			Area:       area,
 			DeviceType: deviceType(s),
 			State:      s.State,
+			Icon:       resolveIcon(s),
 		})
 	}
 
@@ -342,6 +344,25 @@ func friendlyName(s haState) string {
 		return name
 	}
 	return s.EntityID
+}
+
+// resolveIcon turns an entity's own HA-reported "icon" attribute (e.g.
+// "mdi:water-percent") into a same-origin URL the display can render
+// directly, resolving and caching it server-side via mdiicons (issue
+// #175) -- nil for an entity with no icon attribute, or one that isn't
+// a resolvable MDI reference, same "best effort, doesn't fail Fetch"
+// treatment as fetchAreas.
+func resolveIcon(s haState) *string {
+	raw, ok := s.Attributes["icon"].(string)
+	if !ok || raw == "" {
+		return nil
+	}
+	filename, ok := mdiicons.Resolve(raw)
+	if !ok {
+		return nil
+	}
+	url := "/icons/" + filename
+	return &url
 }
 
 func stringSlice(v any) []string {

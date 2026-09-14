@@ -22,6 +22,7 @@ import (
 	"github.com/Digitalcheffe/mullet/internal/config"
 	"github.com/Digitalcheffe/mullet/internal/db"
 	"github.com/Digitalcheffe/mullet/internal/logging"
+	"github.com/Digitalcheffe/mullet/internal/mdiicons"
 	plugindata "github.com/Digitalcheffe/mullet/internal/plugins/data"
 
 	// Compiled-in data plugins register themselves via init(). Adding a
@@ -104,11 +105,16 @@ func main() {
 		log.Println("WARNING: AUTH_DISABLED=true -- the admin API and UI require no login. Local dev only; never set this in a real deployment.")
 	}
 
+	// Every icon mdiicons.Resolve ever returns gets cached under this
+	// directory -- see its own doc comment for why this is a build-time
+	// embed + on-disk cache rather than any kind of runtime fetch.
+	mdiicons.Init(cfg.IconsDir)
+
 	router := api.NewRouter(sqldb, jwtSecret, cfg.CORSOrigins, api.ServerInfo{
 		Port:      cfg.Port,
 		DBPath:    cfg.DBPath,
 		StartedAt: startedAt,
-	}, cfg.StaticDir, cfg.AuthDisabled, plugindata.Default, sched, cfg.UploadsDir)
+	}, cfg.StaticDir, cfg.AuthDisabled, plugindata.Default, sched, cfg.UploadsDir, cfg.IconsDir)
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: router}
 
 	go func() {

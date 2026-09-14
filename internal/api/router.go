@@ -31,7 +31,7 @@ type ServerInfo struct {
 // the plugin management endpoints: sched.Reload() is called after any
 // instance create/update/delete so changes take effect without a
 // restart.
-func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info ServerInfo, staticDir string, authDisabled bool, registry *plugindata.Registry, sched *scheduler.Scheduler, uploadsDir string) http.Handler {
+func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info ServerInfo, staticDir string, authDisabled bool, registry *plugindata.Registry, sched *scheduler.Scheduler, uploadsDir, iconsDir string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 
@@ -141,6 +141,12 @@ func NewRouter(sqldb *sql.DB, jwtSecret []byte, corsOrigins []string, info Serve
 	// /api/data is: a display rendering one has no way to attach a
 	// Bearer token.
 	mux.HandleFunc("GET /uploads/{name}", handleServeUpload(uploadsDir))
+
+	// /icons/{name} -- a Home Assistant entity's own icon, resolved and
+	// cached server-side (issue #175, internal/mdiicons) -- same
+	// reasoning as /uploads above: the display can't attach a Bearer
+	// token, so this has to be publicly reachable too.
+	mux.HandleFunc("GET /icons/{name}", handleServeUpload(iconsDir))
 
 	// /api/oauth/callback -- the OAuth2 provider's redirect target after
 	// the admin grants or denies consent, deliberately outside

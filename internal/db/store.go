@@ -110,8 +110,8 @@ func writeHomeDevices(tx *sql.Tx, pluginInstanceID int, rows []any) error {
 	}
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO shape_home_devices (id, plugin_instance_id, name, area, device_type, state)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO shape_home_devices (id, plugin_instance_id, name, area, device_type, state, icon)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return fmt.Errorf("preparing shape_home_devices insert: %w", err)
@@ -123,7 +123,7 @@ func writeHomeDevices(tx *sql.Tx, pluginInstanceID int, rows []any) error {
 		if !ok {
 			return fmt.Errorf("home_devices writer: expected shapes.HomeDevice, got %T", row)
 		}
-		if _, err := stmt.Exec(d.ID, pluginInstanceID, d.Name, d.Area, d.DeviceType, d.State); err != nil {
+		if _, err := stmt.Exec(d.ID, pluginInstanceID, d.Name, d.Area, d.DeviceType, d.State, d.Icon); err != nil {
 			return fmt.Errorf("inserting shape_home_devices row %q: %w", d.ID, err)
 		}
 	}

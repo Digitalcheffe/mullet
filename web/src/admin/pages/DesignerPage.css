@@ -483,3 +483,19 @@
 .content-align-btn.selected .content-align-dot {
   background: var(--surface);
 }
+
+/* An 'image' configSchema field's own upload button + preview (issue
+   #174, e.g. the single-entity widget's custom icon). */
+.image-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.image-field-preview {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+}

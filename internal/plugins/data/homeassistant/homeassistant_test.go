@@ -8,6 +8,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/Digitalcheffe/mullet/internal/mdiicons"
 	"github.com/Digitalcheffe/mullet/internal/shapes"
 )
 
@@ -22,7 +23,7 @@ func fakeHAServer(t *testing.T, areaByEntity map[string]string) *httptest.Server
 		{"entity_id": "lock.front_door", "state": "locked", "attributes": map[string]any{"friendly_name": "Front Door"}},
 		{"entity_id": "cover.garage_door", "state": "closed", "attributes": map[string]any{"friendly_name": "Garage Door", "device_class": "garage"}},
 		{"entity_id": "binary_sensor.back_door", "state": "off", "attributes": map[string]any{"friendly_name": "Back Door", "device_class": "door"}},
-		{"entity_id": "sensor.outdoor_temp", "state": "68.5", "attributes": map[string]any{"friendly_name": "Outdoor Temperature", "unit_of_measurement": "°F"}},
+		{"entity_id": "sensor.outdoor_temp", "state": "68.5", "attributes": map[string]any{"friendly_name": "Outdoor Temperature", "unit_of_measurement": "°F", "icon": "mdi:thermometer"}},
 		{"entity_id": "climate.thermostat", "state": "heat", "attributes": map[string]any{"friendly_name": "Thermostat"}},
 		{"entity_id": "person.alice", "state": "home", "attributes": map[string]any{"friendly_name": "Alice"}},
 		{"entity_id": "device_tracker.alice_phone", "state": "not_home", "attributes": map[string]any{"friendly_name": "Alice's Phone"}},
@@ -132,6 +133,42 @@ func TestFetchAllSupportedEntities(t *testing.T) {
 	tracker, ok := byID["device_tracker.alice_phone"]
 	if !ok || tracker.DeviceType != "device_tracker" || tracker.State != "not_home" {
 		t.Errorf("tracker = %+v (ok=%v), want DeviceType=device_tracker, State=not_home", tracker, ok)
+	}
+}
+
+func TestFetchResolvesEntityIcon(t *testing.T) {
+	mdiicons.Init(t.TempDir())
+	t.Cleanup(func() { mdiicons.Init("") })
+
+	srv := fakeHAServer(t, nil)
+	defer srv.Close()
+
+	p := New()
+	if err := p.Configure(map[string]any{"url": srv.URL, "token": "test-token"}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	result, err := p.Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+
+	byID := map[string]shapes.HomeDevice{}
+	for _, row := range result["home_devices"] {
+		d := row.(shapes.HomeDevice)
+		byID[d.ID] = d
+	}
+
+	sensor, ok := byID["sensor.outdoor_temp"]
+	if !ok || sensor.Icon == nil || *sensor.Icon != "/icons/thermometer.svg" {
+		t.Errorf("sensor.Icon = %v (ok=%v), want /icons/thermometer.svg", sensor.Icon, ok)
+	}
+
+	// An entity with no icon attribute at all (most of the fixture) must
+	// stay nil, not e.g. an empty string -- the widgets' own fallback
+	// logic checks for nil specifically.
+	light, ok := byID["light.living_room"]
+	if !ok || light.Icon != nil {
+		t.Errorf("light.Icon = %v (ok=%v), want nil (fixture has no icon attribute)", light.Icon, ok)
 	}
 }
 

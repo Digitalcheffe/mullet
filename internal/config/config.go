@@ -23,9 +23,12 @@ type SMTPEnvConfig struct {
 
 // Config holds server-wide settings read at startup.
 type Config struct {
-	Port         string
-	DBPath       string
-	UploadsDir   string
+	Port       string
+	DBPath     string
+	UploadsDir string
+	// IconsDir holds MDI icons resolved/cached on first use (issue
+	// #175) -- see internal/mdiicons.
+	IconsDir     string
 	CORSOrigins  []string
 	StaticDir    string
 	AuthDisabled bool
@@ -47,7 +50,12 @@ func Load() Config {
 		// docker-compose.yml) rather than a second Docker volume --
 		// uploaded files need to survive a container restart/update the
 		// same way the database does.
-		UploadsDir:   getEnv("UPLOADS_DIR", "./data/uploads"),
+		UploadsDir: getEnv("UPLOADS_DIR", "./data/uploads"),
+		// Same reasoning as UploadsDir -- under the same ./data volume so
+		// a cached icon survives a container restart/update instead of
+		// needing to be re-resolved (still cheap, since it's a local
+		// embed lookup either way, but no reason to throw it away).
+		IconsDir:     getEnv("ICONS_DIR", "./data/icons"),
 		CORSOrigins:  getEnvList("CORS_ORIGINS"),
 		StaticDir:    getEnv("STATIC_DIR", "./web/dist"),
 		AuthDisabled: getEnvBool("AUTH_DISABLED"),

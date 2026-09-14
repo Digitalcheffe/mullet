@@ -1,6 +1,6 @@
 import type { UIPlugin, WidgetProps } from '../../shared/types/plugin';
 import { cardStyle } from '../shared/cardStyle';
-import { DeviceIcon, statusClass } from './deviceIcons';
+import { DeviceIcon, MdiIcon, statusClass } from './deviceIcons';
 import './HomeStatusWidget.css';
 
 // One row from GET /api/data/home_devices -- field names match the
@@ -13,6 +13,11 @@ export interface HomeDeviceRow {
   device_type: string;
   state: string;
   fetched_at: string;
+  // A same-origin URL to this entity's own Home Assistant-reported
+  // icon, already resolved and cached server-side (issue #175) -- null
+  // if it has none, or its "mdi:xxx" name didn't resolve to a known
+  // icon. Preferred over DeviceIcon's own hardcoded set when present.
+  icon: string | null;
 }
 
 interface Config {
@@ -50,7 +55,11 @@ function HomeStatusComponent({ data, config, size, theme }: WidgetProps<HomeDevi
             {devices.map((d) => (
               <div className="hs-device" key={d.id}>
                 <span className="hs-icon" style={{ color: theme.accentColor }}>
-                  <DeviceIcon deviceType={d.device_type} width="1em" height="1em" />
+                  {d.icon ? (
+                    <MdiIcon url={d.icon} />
+                  ) : (
+                    <DeviceIcon deviceType={d.device_type} width="1em" height="1em" />
+                  )}
                 </span>
                 <span className="hs-name">{d.name}</span>
                 <span className={`hs-dot ${statusClass(d.device_type, d.state)}`} />

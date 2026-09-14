@@ -9,6 +9,16 @@
   justify-content: center;
   gap: 4px;
   text-align: center;
+  /* A card sized down near the widget's minSize may not have room for
+     both the time and date (issue #163) -- scroll to reach whatever's
+     cut off rather than hiding the date outright. Plain `center`
+     overflow can be unreachable by scrolling (content clips equally
+     off both ends, and scrollTop can't go negative) -- `safe center`
+     falls back to start-alignment instead once content overflows, so
+     the cut-off part is always the reachable, scrollable end. Browsers
+     without `safe` support just keep the plain `center` above. */
+  overflow: auto;
+  justify-content: safe center;
 }
 
 .clock-time {
@@ -26,6 +36,10 @@
 .clock-date {
   font-size: var(--mullet-font-sm);
   opacity: 0.7;
+}
+
+.clock-compact .clock-date {
+  font-size: calc(var(--mullet-font-sm) * 0.85);
 }
 
 .clock-analog-face {

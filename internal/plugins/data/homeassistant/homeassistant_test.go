@@ -24,6 +24,8 @@ func fakeHAServer(t *testing.T, areaByEntity map[string]string) *httptest.Server
 		{"entity_id": "binary_sensor.back_door", "state": "off", "attributes": map[string]any{"friendly_name": "Back Door", "device_class": "door"}},
 		{"entity_id": "sensor.outdoor_temp", "state": "68.5", "attributes": map[string]any{"friendly_name": "Outdoor Temperature", "unit_of_measurement": "°F"}},
 		{"entity_id": "climate.thermostat", "state": "heat", "attributes": map[string]any{"friendly_name": "Thermostat"}},
+		{"entity_id": "person.alice", "state": "home", "attributes": map[string]any{"friendly_name": "Alice"}},
+		{"entity_id": "device_tracker.alice_phone", "state": "not_home", "attributes": map[string]any{"friendly_name": "Alice's Phone"}},
 		// Unsupported domains -- must never show up in Fetch/Discover output.
 		{"entity_id": "automation.morning_routine", "state": "on", "attributes": map[string]any{"friendly_name": "Morning Routine"}},
 		{"entity_id": "zone.home", "state": "zoning", "attributes": map[string]any{"friendly_name": "Home"}},
@@ -86,8 +88,8 @@ func TestFetchAllSupportedEntities(t *testing.T) {
 	}
 
 	devices := result["home_devices"]
-	if len(devices) != 6 {
-		t.Fatalf("got %d devices, want 6 (automation/zone excluded)", len(devices))
+	if len(devices) != 8 {
+		t.Fatalf("got %d devices, want 8 (automation/zone excluded)", len(devices))
 	}
 
 	byID := map[string]shapes.HomeDevice{}
@@ -121,6 +123,39 @@ func TestFetchAllSupportedEntities(t *testing.T) {
 
 	if _, ok := byID["automation.morning_routine"]; ok {
 		t.Error("automation entity leaked into home_devices output")
+	}
+
+	person, ok := byID["person.alice"]
+	if !ok || person.DeviceType != "person" || person.State != "home" {
+		t.Errorf("person = %+v (ok=%v), want DeviceType=person, State=home", person, ok)
+	}
+	tracker, ok := byID["device_tracker.alice_phone"]
+	if !ok || tracker.DeviceType != "device_tracker" || tracker.State != "not_home" {
+		t.Errorf("tracker = %+v (ok=%v), want DeviceType=device_tracker, State=not_home", tracker, ok)
+	}
+}
+
+func TestFetchFiltersToSelectedDomains(t *testing.T) {
+	srv := fakeHAServer(t, nil)
+	defer srv.Close()
+
+	p := New()
+	if err := p.Configure(map[string]any{"url": srv.URL, "token": "test-token", "domains": []any{"light", "lock"}}); err != nil {
+		t.Fatalf("Configure: %v", err)
+	}
+	result, err := p.Fetch(context.Background())
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	devices := result["home_devices"]
+	if len(devices) != 2 {
+		t.Fatalf("got %d devices, want 2 (only light+lock domains)", len(devices))
+	}
+	for _, row := range devices {
+		d := row.(shapes.HomeDevice)
+		if d.DeviceType != "light" && d.DeviceType != "lock" {
+			t.Errorf("device %+v has DeviceType outside the selected domains", d)
+		}
 	}
 }
 
@@ -198,8 +233,8 @@ func TestDiscoverEntities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover: %v", err)
 	}
-	if len(options) != 6 {
-		t.Fatalf("got %d options, want 6 (automation/zone excluded)", len(options))
+	if len(options) != 8 {
+		t.Fatalf("got %d options, want 8 (automation/zone excluded)", len(options))
 	}
 	found := false
 	for _, o := range options {
@@ -209,6 +244,22 @@ func TestDiscoverEntities(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("options = %+v, missing light.living_room", options)
+	}
+}
+
+func TestDiscoverFiltersToSelectedDomains(t *testing.T) {
+	srv := fakeHAServer(t, nil)
+	defer srv.Close()
+
+	p := New()
+	options, err := p.Discover(context.Background(), "entities", map[string]any{
+		"url": srv.URL, "token": "test-token", "domains": []any{"sensor"},
+	})
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if len(options) != 1 || options[0].Value != "sensor.outdoor_temp" {
+		t.Errorf("options = %+v, want just sensor.outdoor_temp", options)
 	}
 }
 
@@ -224,16 +275,28 @@ func TestManifestDeclaresAPIKeyAuth(t *testing.T) {
 	if m.AuthType != "api_key" {
 		t.Errorf("AuthType = %q, want api_key (no OAuth2 flow for this API)", m.AuthType)
 	}
-	found := false
+	foundEntities, foundDomains := false, false
 	for _, f := range m.SetupFields {
-		if f.Key == "entities" {
-			found = true
+		switch f.Key {
+		case "entities":
+			foundEntities = true
 			if !f.Dynamic {
 				t.Error("entities field is not marked Dynamic")
 			}
+		case "domains":
+			foundDomains = true
+			if f.Dynamic {
+				t.Error("domains field is marked Dynamic, want static (its options are the plugin's own fixed list)")
+			}
+			if len(f.Options) == 0 {
+				t.Error("domains field has no Options")
+			}
 		}
 	}
-	if !found {
+	if !foundEntities {
 		t.Error("manifest has no \"entities\" SetupField")
+	}
+	if !foundDomains {
+		t.Error("manifest has no \"domains\" SetupField")
 	}
 }

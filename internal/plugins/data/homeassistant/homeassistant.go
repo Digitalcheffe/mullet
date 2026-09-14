@@ -36,13 +36,49 @@ func init() {
 var supportedDomains = map[string]bool{
 	"light": true, "lock": true, "cover": true, "binary_sensor": true,
 	"sensor": true, "climate": true,
+	// person/device_tracker (issue #99) -- presence ("home"/"away"), the
+	// domains HA itself uses for a person or a tracked device's location.
+	"person": true, "device_tracker": true,
+}
+
+// domainOptions is supportedDomains as a stable-ordered, human-labeled
+// list for the "domains" SetupField below -- a plain map has no
+// deterministic iteration order, which would make the picker's option
+// order jump around between requests.
+var domainOptions = []plugindata.SelectOption{
+	{Value: "light", Label: "Lights"},
+	{Value: "lock", Label: "Locks"},
+	{Value: "cover", Label: "Covers (garage doors, blinds)"},
+	{Value: "binary_sensor", Label: "Binary sensors (doors, windows, motion)"},
+	{Value: "sensor", Label: "Sensors (temperature, humidity, etc.)"},
+	{Value: "climate", Label: "Climate (thermostats)"},
+	{Value: "person", Label: "People (presence)"},
+	{Value: "device_tracker", Label: "Device trackers (presence)"},
 }
 
 // Plugin implements plugindata.DataPlugin and plugindata.Discoverable.
 type Plugin struct {
 	url      string
 	token    string
-	entities []string // empty means "all supported entities"
+	domains  []string // empty means "every supported domain" -- issue #99
+	entities []string // empty means "all entities in the selected domains"
+}
+
+// selectedDomains resolves the admin's "domains" choice against
+// supportedDomains -- empty (nothing picked) falls back to every
+// supported domain, the same "no filter" default the field had before
+// domain filtering existed at all.
+func selectedDomains(domains []string) map[string]bool {
+	if len(domains) == 0 {
+		return supportedDomains
+	}
+	out := make(map[string]bool, len(domains))
+	for _, d := range domains {
+		if supportedDomains[d] {
+			out[d] = true
+		}
+	}
+	return out
 }
 
 func New() *Plugin { return &Plugin{} }
@@ -54,7 +90,7 @@ func (p *Plugin) Manifest() plugindata.DataPluginManifest {
 	return plugindata.DataPluginManifest{
 		ID:          ID,
 		Name:        "Home Assistant",
-		Description: "Smart home device states (lights, locks, covers, sensors, climate) via Home Assistant's REST API.",
+		Description: "Smart home device states (lights, locks, covers, sensors, climate, presence) via Home Assistant's REST API.",
 		DataShapes:  []string{"home_devices"},
 		AuthType:    "api_key",
 		SetupFields: []plugindata.SetupField{
@@ -67,8 +103,18 @@ func (p *Plugin) Manifest() plugindata.DataPluginManifest {
 				HelpText: "Create one in Home Assistant: your profile page > Security > Long-Lived Access Tokens.",
 			},
 			{
+				// Static (not Dynamic) -- the option list is this plugin's
+				// own fixed supportedDomains, not something that needs a
+				// live instance to ask. Filled in before "entities" (issue
+				// #99) so a large HA instance's entity picker only has to
+				// list entities from the domain(s) actually wanted, instead
+				// of every supported domain's entities at once.
+				Key: "domains", Label: "Domains", Type: "multi-select", Options: domainOptions,
+				HelpText: "Narrows which kinds of entities show up below to pick from -- leave empty for all of them.",
+			},
+			{
 				Key: "entities", Label: "Entities", Type: "multi-select", Dynamic: true,
-				HelpText: "Save this instance first, then edit it to pick specific entities -- leave empty for all supported ones.",
+				HelpText: "Save this instance first, then edit it to pick specific entities -- leave empty for all in the selected domains.",
 			},
 		},
 		RecommendedInterval: 30 * time.Second,
@@ -87,6 +133,7 @@ func (p *Plugin) Configure(cfg map[string]any) error {
 	}
 	p.url = strings.TrimSuffix(url, "/")
 	p.token = token
+	p.domains = stringSlice(cfg["domains"])
 	p.entities = stringSlice(cfg["entities"])
 	return nil
 }
@@ -101,6 +148,7 @@ func (p *Plugin) Fetch(ctx context.Context) (map[string][]any, error) {
 	// doc comment for why this can't be relied on.
 	areas := fetchAreas(ctx, p.url, p.token, states)
 
+	domains := selectedDomains(p.domains)
 	selected := make(map[string]bool, len(p.entities))
 	for _, id := range p.entities {
 		selected[id] = true
@@ -108,7 +156,7 @@ func (p *Plugin) Fetch(ctx context.Context) (map[string][]any, error) {
 
 	var rows []any
 	for _, s := range states {
-		if !supportedDomains[domain(s.EntityID)] {
+		if !domains[domain(s.EntityID)] {
 			continue
 		}
 		if len(selected) > 0 && !selected[s.EntityID] {
@@ -153,9 +201,16 @@ func (p *Plugin) Discover(ctx context.Context, field string, cfg map[string]any)
 		return nil, err
 	}
 
+	// cfg reflects whatever the admin has already filled in on the setup
+	// form, including a field that hasn't been saved yet -- "domains"
+	// comes before "entities" in SetupFields specifically so this can
+	// narrow the list to just the domain(s) picked there (issue #99),
+	// unset/empty meaning every supported domain like before this existed.
+	domains := selectedDomains(stringSlice(cfg["domains"]))
+
 	options := make([]plugindata.DiscoveredOption, 0, len(states))
 	for _, s := range states {
-		if !supportedDomains[domain(s.EntityID)] {
+		if !domains[domain(s.EntityID)] {
 			continue
 		}
 		options = append(options, plugindata.DiscoveredOption{Value: s.EntityID, Label: friendlyName(s)})

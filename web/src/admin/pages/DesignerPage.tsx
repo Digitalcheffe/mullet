@@ -818,6 +818,7 @@ export default function DesignerPage() {
               uiPlugin={getUIPlugin(selectedCard.ui_plugin_id)}
               instances={instances}
               manifests={manifests}
+              apiFetch={apiFetch}
               onSave={(values) => handleSaveCardSettings(selectedCard, values)}
               onCancel={() => setSelectedCardId(null)}
             />
@@ -845,6 +846,10 @@ interface CardSettingsPanelProps {
   uiPlugin: ReturnType<typeof getUIPlugin>;
   instances: PluginInstance[];
   manifests: PluginManifest[];
+  // Only needed for a `dynamic` configSchema field's own discover call
+  // (issue #99) -- every other save/load path here already goes through
+  // the parent's own withSaveStatus-wrapped handlers instead.
+  apiFetch: ReturnType<typeof useApiFetch>;
   onSave: (values: {
     data_plugin_instance_id: number | null;
     data_plugin_instance_ids?: number[];
@@ -885,11 +890,19 @@ function ConfigFieldInput({
   field,
   value,
   onChange,
+  dynamicOptions,
+  dynamicLoading,
 }: {
   fieldKey: string;
   field: ConfigField;
   value: unknown;
   onChange: (v: unknown) => void;
+  // Only meaningful when field.dynamic is set (issue #99) -- the
+  // CardSettingsPanel-fetched options for a 'select' field sourced from
+  // the card's own bound data plugin instance, instead of a fixed
+  // `options` list.
+  dynamicOptions?: { value: string; label: string }[];
+  dynamicLoading?: boolean;
 }) {
   switch (field.type) {
     case 'textarea':
@@ -911,22 +924,33 @@ function ConfigFieldInput({
           <input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />
         </label>
       );
-    case 'select':
+    case 'select': {
+      const options = field.dynamic ? (dynamicOptions ?? []) : (field.options ?? []);
       return (
         <label className="field" key={fieldKey}>
           <span className="kicker">{field.label}</span>
-          <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
-            {(field.options ?? []).map((o) => (
+          <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} disabled={field.dynamic && dynamicLoading}>
+            <option value="">{field.dynamic && dynamicLoading ? 'Loading…' : 'None'}</option>
+            {options.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
             ))}
           </select>
+          {field.dynamic && !dynamicLoading && options.length === 0 && (
+            <span className="field-help">No entities found -- save a data source on this card first, or check its Domains setting.</span>
+          )}
           {field.helpText && <span className="field-help">{field.helpText}</span>}
         </label>
       );
+    }
     case 'multi-select': {
+      // Same "show what's actually selected" fix as ManifestForm.tsx's
+      // multi-select (issue #99) -- a native <select multiple> alone
+      // doesn't make the current selection legible once the option list
+      // is long.
       const selected = Array.isArray(value) ? value.map(String) : [];
+      const labelFor = (v: string) => field.options?.find((o) => o.value === v)?.label ?? v;
       return (
         <label className="field" key={fieldKey}>
           <span className="kicker">{field.label}</span>
@@ -941,6 +965,23 @@ function ConfigFieldInput({
               </option>
             ))}
           </select>
+          {selected.length > 0 && (
+            <div className="selected-chips">
+              {selected.map((v) => (
+                <span className="selected-chip" key={v}>
+                  {labelFor(v)}
+                  <button
+                    type="button"
+                    className="selected-chip-remove"
+                    aria-label={`Remove ${labelFor(v)}`}
+                    onClick={() => onChange(selected.filter((s) => s !== v))}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           {field.helpText && <span className="field-help">{field.helpText}</span>}
         </label>
       );
@@ -987,7 +1028,7 @@ function ConfigFieldInput({
   }
 }
 
-function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCancel }: CardSettingsPanelProps) {
+function CardSettingsPanel({ card, uiPlugin, instances, manifests, apiFetch, onSave, onCancel }: CardSettingsPanelProps) {
   const supportsMulti = uiPlugin?.supportsMultiDataSource === true;
   const [dataPluginInstanceId, setDataPluginInstanceId] = useState<number | null>(card.data_plugin_instance_id ?? null);
   const [dataPluginInstanceIds, setDataPluginInstanceIds] = useState<number[]>(
@@ -1002,6 +1043,39 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
     }
     return initial;
   });
+  // Options for any `dynamic` configSchema field (issue #99, e.g. a
+  // single-entity Home Assistant widget's "which entity" picker) --
+  // fetched from the bound instance's own Discover, the same endpoint
+  // a data plugin's own Dynamic SetupFields already use. Keyed by
+  // configSchema key rather than a single flat value since more than
+  // one dynamic field is possible in principle.
+  const [dynamicOptions, setDynamicOptions] = useState<Record<string, { value: string; label: string }[]>>({});
+  const [dynamicLoading, setDynamicLoading] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    const dynamicFields = Object.entries(configSchema).filter(([, field]) => field.dynamic);
+    if (dynamicFields.length === 0 || dataPluginInstanceId == null) return;
+    let cancelled = false;
+    for (const [key, field] of dynamicFields) {
+      const discoverField = field.dynamicField ?? key;
+      setDynamicLoading((prev) => ({ ...prev, [key]: true }));
+      apiFetch(`/api/admin/plugins/instances/${dataPluginInstanceId}/discover?field=${encodeURIComponent(discoverField)}`)
+        .then((res) => (res.ok ? res.json() : []))
+        .then((options: { value: string; label: string }[]) => {
+          if (cancelled) return;
+          setDynamicOptions((prev) => ({ ...prev, [key]: options }));
+        })
+        .catch(() => {
+          if (!cancelled) setDynamicOptions((prev) => ({ ...prev, [key]: [] }));
+        })
+        .finally(() => {
+          if (!cancelled) setDynamicLoading((prev) => ({ ...prev, [key]: false }));
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [configSchema, dataPluginInstanceId, apiFetch]);
+
   const [overrideEnabled, setOverrideEnabled] = useState(card.theme_override != null);
   const [themeOverride, setThemeOverride] = useState<Partial<ThemeTokens>>(card.theme_override ?? {});
   const [headerText, setHeaderText] = useState(card.header_text ?? '');
@@ -1114,6 +1188,8 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
             field={field}
             value={configValues[key]}
             onChange={(v) => setConfigValues((prev) => ({ ...prev, [key]: v }))}
+            dynamicOptions={dynamicOptions[key]}
+            dynamicLoading={dynamicLoading[key]}
           />
         ))
       )}

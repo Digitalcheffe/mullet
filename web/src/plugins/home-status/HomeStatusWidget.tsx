@@ -1,6 +1,6 @@
 import type { UIPlugin, WidgetProps } from '../../shared/types/plugin';
 import { cardStyle } from '../shared/cardStyle';
-import { DeviceIcon } from './deviceIcons';
+import { DeviceIcon, statusClass } from './deviceIcons';
 import './HomeStatusWidget.css';
 
 // One row from GET /api/data/home_devices -- field names match the
@@ -17,26 +17,6 @@ export interface HomeDeviceRow {
 
 interface Config {
   showState?: boolean;
-}
-
-// Tri-state read on a device's raw `state` string -- 'good'/'warn'/'bad'
-// only make sense for devices with a clear "at rest" state (a locked
-// door, a closed garage); anything else (sensor readings, climate
-// modes, an "off" light) is 'neutral' rather than guessing at a
-// judgment the framework has no basis for.
-function statusClass(deviceType: string, state: string): string {
-  const s = state.toLowerCase();
-  switch (deviceType) {
-    case 'lock':
-      return s === 'locked' ? 'hs-good' : s === 'unlocked' ? 'hs-bad' : 'hs-neutral';
-    case 'door':
-    case 'garage':
-      return s === 'closed' ? 'hs-good' : s === 'open' ? 'hs-warn' : 'hs-neutral';
-    case 'light':
-      return s === 'on' ? 'hs-good' : 'hs-neutral';
-    default:
-      return 'hs-neutral';
-  }
 }
 
 function HomeStatusComponent({ data, config, size, theme }: WidgetProps<HomeDeviceRow>) {

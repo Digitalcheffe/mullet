@@ -892,6 +892,7 @@ function ConfigFieldInput({
   onChange,
   dynamicOptions,
   dynamicLoading,
+  apiFetch,
 }: {
   fieldKey: string;
   field: ConfigField;
@@ -903,7 +904,35 @@ function ConfigFieldInput({
   // `options` list.
   dynamicOptions?: { value: string; label: string }[];
   dynamicLoading?: boolean;
+  // Only used by an 'image' field's own upload button (issue #174) --
+  // posts straight to the existing /api/admin/uploads endpoint, the
+  // same one a theme's background image already uses.
+  apiFetch?: ReturnType<typeof useApiFetch>;
 }) {
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleImageFileSelected(file: File) {
+    if (!apiFetch) return;
+    setImageError(null);
+    setImageUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await apiFetch('/api/admin/uploads', { method: 'POST', body: formData });
+      if (!res.ok) {
+        throw new Error(await readErrorMessage(res, 'Upload failed'));
+      }
+      const body: { url: string } = await res.json();
+      onChange(body.url);
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setImageUploading(false);
+    }
+  }
+
   switch (field.type) {
     case 'textarea':
       return (
@@ -1015,6 +1044,45 @@ function ConfigFieldInput({
           <input type="date" value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} />
           {field.helpText && <span className="field-help">{field.helpText}</span>}
         </label>
+      );
+    case 'image':
+      return (
+        <div className="field" key={fieldKey}>
+          <span className="kicker">{field.label}</span>
+          <div className="image-field-row">
+            {typeof value === 'string' && value !== '' && <img className="image-field-preview" src={value} alt="" />}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => imageFileInputRef.current?.click()}
+              disabled={imageUploading || !apiFetch}
+            >
+              {imageUploading ? 'Uploading…' : typeof value === 'string' && value !== '' ? 'Replace image' : 'Upload image'}
+            </button>
+            {typeof value === 'string' && value !== '' && (
+              <button type="button" className="btn-secondary" onClick={() => onChange('')}>
+                Remove
+              </button>
+            )}
+            <input
+              ref={imageFileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) handleImageFileSelected(file);
+              }}
+            />
+          </div>
+          {imageError && (
+            <span className="field-help" style={{ color: 'var(--error)' }}>
+              {imageError}
+            </span>
+          )}
+          {field.helpText && <span className="field-help">{field.helpText}</span>}
+        </div>
       );
     case 'text':
     default:
@@ -1190,6 +1258,7 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, apiFetch, onS
             onChange={(v) => setConfigValues((prev) => ({ ...prev, [key]: v }))}
             dynamicOptions={dynamicOptions[key]}
             dynamicLoading={dynamicLoading[key]}
+            apiFetch={apiFetch}
           />
         ))
       )}

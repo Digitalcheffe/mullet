@@ -1,6 +1,6 @@
 import type { UIPlugin, WidgetProps } from '../../shared/types/plugin';
 import { cardStyle } from '../shared/cardStyle';
-import { DeviceIcon, statusClass } from '../home-status/deviceIcons';
+import { DeviceIcon, MdiIcon, statusClass } from '../home-status/deviceIcons';
 import type { HomeDeviceRow } from '../home-status/HomeStatusWidget';
 import './HomeEntityWidget.css';
 
@@ -14,6 +14,10 @@ import './HomeEntityWidget.css';
 interface Config {
   entity?: string;
   showState?: boolean;
+  // A per-card custom icon (issue #174) overriding the domain-based
+  // icon DeviceIcon would otherwise pick -- e.g. a photo of a specific
+  // person for a presence card. Empty/unset keeps today's behavior.
+  customIcon?: string;
 }
 
 function HomeEntityComponent({ data, config, theme }: WidgetProps<HomeDeviceRow>) {
@@ -34,7 +38,16 @@ function HomeEntityComponent({ data, config, theme }: WidgetProps<HomeDeviceRow>
   return (
     <div className="home-entity-widget mullet-card" style={style}>
       <span className="he-icon" style={{ color: theme.accentColor }}>
-        <DeviceIcon deviceType={device.device_type} width="1em" height="1em" />
+        {cfg.customIcon ? (
+          // A custom-uploaded icon (issue #174) stays full-color, unlike
+          // MdiIcon below -- it's the admin's own image/photo, not a
+          // monochrome glyph meant to be recolored to the theme.
+          <img className="he-custom-icon" src={cfg.customIcon} alt="" />
+        ) : device.icon ? (
+          <MdiIcon url={device.icon} />
+        ) : (
+          <DeviceIcon deviceType={device.device_type} width="1em" height="1em" />
+        )}
       </span>
       <span className="he-name">{device.name}</span>
       <span className="he-state-row">
@@ -63,6 +76,10 @@ export const homeEntityPlugin: UIPlugin<HomeDeviceRow> = {
       helpText: 'Save a Home Assistant data source on this card first, then pick which entity to show here.',
     },
     showState: { type: 'toggle', label: 'Show state text', default: true },
+    customIcon: {
+      type: 'image', label: 'Custom icon', default: '',
+      helpText: 'Overrides the automatic icon for this entity. Leave unset to keep the automatic one.',
+    },
   },
   component: HomeEntityComponent,
 };

@@ -1,4 +1,4 @@
-import type { ComponentType, SVGProps } from 'react';
+import type { ComponentType, CSSProperties, SVGProps } from 'react';
 
 // Real SVG icons (issue #85) replacing HomeStatusWidget's old emoji map
 // -- see conditionIcons.tsx's own doc comment for why. Same hand-drawn
@@ -107,6 +107,37 @@ const DEVICE_ICONS: Record<string, ComponentType<IconProps>> = {
 export function DeviceIcon({ deviceType, ...props }: { deviceType: string } & IconProps) {
   const Icon = DEVICE_ICONS[deviceType] ?? PlugIcon;
   return <Icon {...props} />;
+}
+
+// Renders an already-resolved MDI icon (issue #175 -- a same-origin
+// URL like "/icons/thermometer.svg", server-cached from an entity's
+// own HA-reported icon) theme-aware, via a CSS mask rather than a
+// plain <img>. The raw @mdi/svg files have no currentColor/fill set at
+// all (they default to plain black), so an <img> would render solid
+// black regardless of theme; masking a `background-color: currentColor`
+// through the icon's own shape gets the same "inherits the surrounding
+// text/accent color" behavior every other icon here already has.
+export function MdiIcon({ url, className, style }: { url: string; className?: string; style?: CSSProperties }) {
+  return (
+    <span
+      className={className}
+      style={{
+        display: 'inline-block',
+        width: '1em',
+        height: '1em',
+        backgroundColor: 'currentColor',
+        WebkitMaskImage: `url(${url})`,
+        maskImage: `url(${url})`,
+        WebkitMaskSize: 'contain',
+        maskSize: 'contain',
+        WebkitMaskRepeat: 'no-repeat',
+        maskRepeat: 'no-repeat',
+        WebkitMaskPosition: 'center',
+        maskPosition: 'center',
+        ...style,
+      }}
+    />
+  );
 }
 
 // Tri-state read on a device's raw `state` string -- shared with the

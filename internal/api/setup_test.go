@@ -26,7 +26,7 @@ func newUnseededTestRouter(t *testing.T) http.Handler {
 	}
 
 	registry, sched := newTestSchedulerDeps(t, sqldb)
-	return NewRouter(sqldb, []byte(testJWTSecret), nil, testServerInfo(), t.TempDir(), false, registry, sched, t.TempDir())
+	return NewRouter(sqldb, []byte(testJWTSecret), nil, testServerInfo(), t.TempDir(), false, registry, sched, t.TempDir(), t.TempDir())
 }
 
 func TestSetupStatus(t *testing.T) {

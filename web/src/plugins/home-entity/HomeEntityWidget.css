@@ -21,6 +21,13 @@
   line-height: 1;
 }
 
+.he-custom-icon {
+  width: 1.4em;
+  height: 1.4em;
+  object-fit: contain;
+  border-radius: 50%;
+}
+
 .he-name {
   font-weight: 700;
   overflow: hidden;

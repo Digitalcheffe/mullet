@@ -15,6 +15,17 @@ export interface ConfigField {
   default?: unknown;
   options?: { value: string; label: string }[];
   helpText?: string;
+  // Marks a 'select' field whose real options come from the card's own
+  // bound data plugin instance instead of a fixed `options` list (issue
+  // #99) -- e.g. a single-entity Home Assistant widget's "which entity"
+  // picker. Reuses the same GET .../discover?field=... endpoint a data
+  // plugin's own Dynamic SetupFields already use during instance setup,
+  // just scoped to whichever instance this card is bound to.
+  // dynamicField names the Discover field to query on that plugin
+  // (defaults to this ConfigField's own key if unset, since they're the
+  // same name for every widget so far -- Home Assistant's "entities").
+  dynamic?: boolean;
+  dynamicField?: string;
 }
 
 export interface WidgetProps<TData = unknown> {

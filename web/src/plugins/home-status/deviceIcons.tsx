@@ -71,6 +71,18 @@ function ClimateIcon(props: IconProps) {
   );
 }
 
+// Presence (issue #99) -- person/device_tracker entities, so they read
+// distinctly from a generic device rather than falling through to
+// PlugIcon.
+function PersonIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="7.5" r="3.2" />
+      <path d="M5 21v-2a7 7 0 0 1 14 0v2" />
+    </svg>
+  );
+}
+
 function PlugIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
@@ -88,9 +100,40 @@ const DEVICE_ICONS: Record<string, ComponentType<IconProps>> = {
   garage: GarageIcon,
   sensor: SensorIcon,
   climate: ClimateIcon,
+  person: PersonIcon,
+  device_tracker: PersonIcon,
 };
 
 export function DeviceIcon({ deviceType, ...props }: { deviceType: string } & IconProps) {
   const Icon = DEVICE_ICONS[deviceType] ?? PlugIcon;
   return <Icon {...props} />;
+}
+
+// Tri-state read on a device's raw `state` string -- shared with the
+// single-entity widget (issue #99) so the two widgets agree on what
+// counts as "good"/"warn"/"bad" for the same device_type. 'good'/'warn'/
+// 'bad' only make sense for a device with a clear "at rest" state (a
+// locked door, a closed garage); anything else (sensor readings,
+// climate modes, an "off" light) is 'neutral' rather than guessing at a
+// judgment the framework has no basis for.
+export function statusClass(deviceType: string, state: string): string {
+  const s = state.toLowerCase();
+  switch (deviceType) {
+    case 'lock':
+      return s === 'locked' ? 'hs-good' : s === 'unlocked' ? 'hs-bad' : 'hs-neutral';
+    case 'door':
+    case 'garage':
+      return s === 'closed' ? 'hs-good' : s === 'open' ? 'hs-warn' : 'hs-neutral';
+    case 'light':
+      return s === 'on' ? 'hs-good' : 'hs-neutral';
+    // Presence -- HA's own device_tracker/person state is "home" or
+    // else "away"/"not_home"/a zone name. Being away isn't a problem
+    // the way an unlocked door is, so it's 'hs-neutral' rather than
+    // 'hs-bad' -- this is informational, not an alert.
+    case 'person':
+    case 'device_tracker':
+      return s === 'home' ? 'hs-good' : 'hs-neutral';
+    default:
+      return 'hs-neutral';
+  }
 }

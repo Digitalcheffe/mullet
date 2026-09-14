@@ -13,6 +13,7 @@ import { taskListPlugin } from './task-list/TaskListWidget';
 import { mealPlanPlugin } from './meal-plan/MealPlanWidget';
 import { clockPlugin } from './clock/ClockWidget';
 import { homeStatusPlugin } from './home-status/HomeStatusWidget';
+import { homeEntityPlugin } from './home-entity/HomeEntityWidget';
 import { serverHealthPlugin } from './server-health/ServerHealthWidget';
 import { mediaNowPlayingPlugin } from './media-now-playing/MediaNowPlayingWidget';
 import { packageTrackerPlugin } from './package-tracker/PackageTrackerWidget';
@@ -34,6 +35,7 @@ export const uiPlugins: UIPlugin<any>[] = [
   mealPlanPlugin,
   clockPlugin,
   homeStatusPlugin,
+  homeEntityPlugin,
   serverHealthPlugin,
   mediaNowPlayingPlugin,
   packageTrackerPlugin,

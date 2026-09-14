@@ -9,6 +9,45 @@
   color: var(--ink-soft);
 }
 
+/* Visible "here's what's currently selected" list for a multi-select
+   field (issue #99) -- a native <select multiple> alone gives no clear
+   view of the current selection once the option list is long. */
+.selected-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.selected-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-alt);
+  font: 600 11.5px var(--font-body);
+  color: var(--ink);
+}
+.selected-chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.selected-chip-remove:hover {
+  background: var(--border);
+  color: var(--ink);
+}
+
 .toggle-row {
   display: flex;
   align-items: center;

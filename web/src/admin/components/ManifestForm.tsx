@@ -255,13 +255,22 @@ function SetupFieldInput({
         </label>
       );
 
-    case 'multi-select':
+    case 'multi-select': {
+      // A native <select multiple> gives no clear view of what's
+      // currently picked once the option list is long (issue #99 --
+      // reported against Home Assistant's entity picker specifically,
+      // but this is every Dynamic multi-select field's problem) --
+      // you're stuck scanning a scrollable box for which rows happen to
+      // be highlighted. This renders the current selection as its own
+      // visible, removable list alongside the picker instead.
+      const selected = (value as string[]) ?? [];
+      const labelFor = (v: string) => field.options?.find((o) => o.value === v)?.label ?? v;
       return (
         <label className="field">
           <span className="kicker">{field.label}</span>
           <select
             multiple
-            value={(value as string[]) ?? []}
+            value={selected}
             onChange={(e) => onChange(Array.from(e.target.selectedOptions).map((o) => o.value))}
           >
             {field.options?.map((o) => (
@@ -270,9 +279,27 @@ function SetupFieldInput({
               </option>
             ))}
           </select>
+          {selected.length > 0 && (
+            <div className="selected-chips">
+              {selected.map((v) => (
+                <span className="selected-chip" key={v}>
+                  {labelFor(v)}
+                  <button
+                    type="button"
+                    className="selected-chip-remove"
+                    aria-label={`Remove ${labelFor(v)}`}
+                    onClick={() => onChange(selected.filter((s) => s !== v))}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           {help}
         </label>
       );
+    }
 
     case 'number':
       return (

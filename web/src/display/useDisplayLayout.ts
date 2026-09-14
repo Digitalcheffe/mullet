@@ -20,6 +20,17 @@ export interface CardLayout {
   // alignment control.
   header_text?: string;
   header_halign?: 'left' | 'center' | 'right';
+  // Positions a widget's own content within its card (issue #149) --
+  // absent/'center' on both axes matches every card's behavior before
+  // this existed (the widget stretches to fill the card), since that's
+  // the only value that doesn't shrink the widget to its natural size
+  // (see DisplayCard's contentAlignStyle). Best suited to a simple,
+  // naturally-sized widget (Clock, Countdown, Quote) -- aligning a
+  // list-based widget (a calendar, a task list) shrinks it to fit its
+  // content, which for an unbounded list means growing to show all of
+  // it rather than the scrollable box it'd otherwise be.
+  content_halign?: 'left' | 'center' | 'right';
+  content_valign?: 'top' | 'center' | 'bottom';
 }
 
 export interface ScreenLayout {
@@ -45,6 +56,14 @@ export interface DisplayLayout {
   show_bottom_bar: boolean;
   theme: ThemeTokens;
   screens: ScreenLayout[];
+  // Night mode (issue #91) -- night_start/night_end are "HH:MM" in the
+  // display's own local time, wrapping past midnight when start > end
+  // (e.g. "22:00"-"07:00"). Both absent alongside night_mode_enabled
+  // false is every display's default.
+  night_mode_enabled: boolean;
+  night_start?: string;
+  night_end?: string;
+  night_brightness: number;
 }
 
 interface RawLayout extends Omit<DisplayLayout, 'theme'> {

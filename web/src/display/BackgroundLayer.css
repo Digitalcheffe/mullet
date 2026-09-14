@@ -1,0 +1,50 @@
+.background-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.background-layer-slide {
+  position: absolute;
+  inset: -5%; /* overshoot the viewport so the Ken Burns zoom/pan below never reveals an edge */
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 2.5s ease;
+  /* Ken Burns effect (issue #92): a slow, subtle continuous zoom+pan --
+     each slide starts its animation at its own random-ish offset via
+     animation-delay (set inline isn't needed; the keyframe itself
+     covers a big enough drift range that two slides rarely look
+     synced) so a slideshow's slides don't all move in visible lockstep. */
+  animation: background-ken-burns 40s ease-in-out infinite alternate;
+}
+.background-layer-slide.active {
+  opacity: 1;
+}
+
+@keyframes background-ken-burns {
+  from { transform: scale(1) translate(0, 0); }
+  to { transform: scale(1.08) translate(-2%, 2%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .background-layer-slide {
+    animation: none;
+  }
+}
+
+/* Legibility scrim (issue #92) -- darkens top/bottom where the top/
+   bottom bars and card text tend to sit, leaving the middle lighter so
+   the photo itself still reads as the point of the feature. */
+.background-layer-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.45) 0%,
+    rgba(0, 0, 0, 0.15) 20%,
+    rgba(0, 0, 0, 0.15) 80%,
+    rgba(0, 0, 0, 0.45) 100%
+  );
+}

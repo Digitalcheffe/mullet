@@ -53,13 +53,22 @@ export default function ThemeTokenFields({ values, onChange, fields = ALL_FIELDS
 
   const show = (key: ThemeTokenKey) => fields.includes(key);
 
-  async function handleFileSelected(file: File) {
+  // Appends each upload to the existing newline-separated list (issue
+  // #92's slideshow) rather than replacing it -- the first image
+  // stays a plain single-line value exactly as before that existed,
+  // and it only grows into a multi-line list once a second is added.
+  async function handleFilesSelected(files: FileList) {
     if (!onUploadImage) return;
     setUploadError(null);
     setUploading(true);
     try {
-      const url = await onUploadImage(file);
-      set('background', { type: 'image', value: url });
+      const existing = values.background?.type === 'image' ? values.background.value : '';
+      const urls: string[] = [];
+      for (const file of Array.from(files)) {
+        urls.push(await onUploadImage(file));
+      }
+      const combined = [existing, ...urls].filter((v) => v.trim() !== '').join('\n');
+      set('background', { type: 'image', value: combined });
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
@@ -94,27 +103,37 @@ export default function ThemeTokenFields({ values, onChange, fields = ALL_FIELDS
               <option value="gradient">Gradient</option>
               <option value="image">Image URL</option>
             </select>
-            {values.background?.type !== 'gradient' && (
-              <input
+            {values.background?.type === 'image' ? (
+              <textarea
+                rows={Math.min(4, Math.max(1, (values.background?.value ?? '').split('\n').length))}
                 value={values.background?.value ?? ''}
-                onChange={(e) => set('background', { type: values.background?.type ?? 'solid', value: e.target.value })}
-                placeholder={values.background?.type === 'image' ? 'https://... or upload one' : '#0b0f14'}
+                onChange={(e) => set('background', { type: 'image', value: e.target.value })}
+                placeholder="https://... (one per line for a slideshow) or upload below"
               />
+            ) : (
+              values.background?.type !== 'gradient' && (
+                <input
+                  value={values.background?.value ?? ''}
+                  onChange={(e) => set('background', { type: values.background?.type ?? 'solid', value: e.target.value })}
+                  placeholder="#0b0f14"
+                />
+              )
             )}
             {values.background?.type === 'image' && onUploadImage && (
               <>
                 <button type="button" className="btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                  {uploading ? 'Uploading…' : 'Upload image'}
+                  {uploading ? 'Uploading…' : 'Add image(s)'}
                 </button>
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/png,image/jpeg,image/gif,image/webp"
+                  multiple
                   hidden
                   onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = ''; // allow re-selecting the same file later
-                    if (file) handleFileSelected(file);
+                    const files = e.target.files;
+                    e.target.value = ''; // allow re-selecting the same file(s) later
+                    if (files && files.length > 0) handleFilesSelected(files);
                   }}
                 />
               </>
@@ -125,6 +144,12 @@ export default function ThemeTokenFields({ values, onChange, fields = ALL_FIELDS
               value={values.background.value}
               onChange={(v) => set('background', { type: 'gradient', value: v })}
             />
+          )}
+          {values.background?.type === 'image' && (
+            <span className="field-help">
+              Add more than one image for a slideshow (crossfades every 20s). Every image background gets a slow
+              Ken Burns pan/zoom and a legibility scrim automatically.
+            </span>
           )}
           {uploadError && (
             <span className="field-help" style={{ color: 'var(--error)' }}>

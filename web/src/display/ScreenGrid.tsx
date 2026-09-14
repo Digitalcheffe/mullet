@@ -61,8 +61,11 @@ export default function ScreenGrid({ screen, theme }: Props) {
 
   return (
     <div className="screen-grid" style={style}>
-      {screen.cards.map((card) => (
-        <DisplayCard key={card.id} card={card} theme={resolvedTheme} />
+      {screen.cards.map((card, i) => (
+        // Staggered up to 10 cards (60ms apart) -- beyond that the delay
+        // is clamped rather than growing forever, so a screen with many
+        // cards doesn't take visibly longer to finish entering.
+        <DisplayCard key={card.id} card={card} theme={resolvedTheme} enterDelay={Math.min(i, 10) * 0.06} />
       ))}
     </div>
   );

@@ -210,23 +210,48 @@ type displayRequest struct {
 	RotationSeconds int    `json:"rotation_seconds"`
 	ShowTopBar      bool   `json:"show_top_bar"`
 	ShowBottomBar   bool   `json:"show_bottom_bar"`
+	// Night mode (issue #91) -- see db.Display's doc comment. Not
+	// validated here beyond what UpdateDisplay itself requires (nothing
+	// -- an empty/malformed "HH:MM" just never matches in isNightNow).
+	NightModeEnabled bool     `json:"night_mode_enabled"`
+	NightStart       *string  `json:"night_start"`
+	NightEnd         *string  `json:"night_end"`
+	NightBrightness  *float64 `json:"night_brightness"`
 }
 
 type displayResponse struct {
-	ID              int    `json:"id"`
-	Name            string `json:"name"`
-	Slug            string `json:"slug"`
-	ThemeID         *int   `json:"theme_id,omitempty"`
-	RotationSeconds int    `json:"rotation_seconds"`
-	ShowTopBar      bool   `json:"show_top_bar"`
-	ShowBottomBar   bool   `json:"show_bottom_bar"`
+	ID               int     `json:"id"`
+	Name             string  `json:"name"`
+	Slug             string  `json:"slug"`
+	ThemeID          *int    `json:"theme_id,omitempty"`
+	RotationSeconds  int     `json:"rotation_seconds"`
+	ShowTopBar       bool    `json:"show_top_bar"`
+	ShowBottomBar    bool    `json:"show_bottom_bar"`
+	NightModeEnabled bool    `json:"night_mode_enabled"`
+	NightStart       *string `json:"night_start,omitempty"`
+	NightEnd         *string `json:"night_end,omitempty"`
+	NightBrightness  float64 `json:"night_brightness"`
 }
 
 func toDisplayResponse(d db.Display) displayResponse {
 	return displayResponse{
 		ID: d.ID, Name: d.Name, Slug: d.Slug, ThemeID: d.ThemeID, RotationSeconds: d.RotationSeconds,
 		ShowTopBar: d.ShowTopBar, ShowBottomBar: d.ShowBottomBar,
+		NightModeEnabled: d.NightModeEnabled, NightStart: d.NightStart, NightEnd: d.NightEnd, NightBrightness: d.NightBrightness,
 	}
+}
+
+// nightBrightnessOrDefault mirrors screenDefaults'/cardRequest's
+// pattern for a field a create-vs-update path needs different
+// fallbacks for -- 0 is indistinguishable from "not sent" in a plain
+// JSON number, so this is a pointer purely to tell that apart from an
+// explicit 0 (full black), unlike NightModeEnabled/NightStart/NightEnd
+// which have no ambiguous zero value to worry about.
+func nightBrightnessOrDefault(v *float64) float64 {
+	if v == nil {
+		return 0.4
+	}
+	return *v
 }
 
 func handleListDisplays(sqldb *sql.DB) http.HandlerFunc {
@@ -317,7 +342,10 @@ func handleUpdateDisplay(sqldb *sql.DB) http.HandlerFunc {
 			rotation = 30
 		}
 
-		switch err := db.UpdateDisplay(sqldb, id, req.Name, req.Slug, req.ThemeID, rotation, req.ShowTopBar, req.ShowBottomBar); {
+		switch err := db.UpdateDisplay(
+			sqldb, id, req.Name, req.Slug, req.ThemeID, rotation, req.ShowTopBar, req.ShowBottomBar,
+			req.NightModeEnabled, req.NightStart, req.NightEnd, nightBrightnessOrDefault(req.NightBrightness),
+		); {
 		case errors.Is(err, db.ErrNotFound):
 			http.Error(w, "not found", http.StatusNotFound)
 			return
@@ -652,8 +680,8 @@ func writeScreen(w http.ResponseWriter, sqldb *sql.DB, id int, status int) {
 // ---- Cards ----
 
 type cardRequest struct {
-	UIPluginID           string          `json:"ui_plugin_id"`
-	DataPluginInstanceID *int            `json:"data_plugin_instance_id"`
+	UIPluginID           string `json:"ui_plugin_id"`
+	DataPluginInstanceID *int   `json:"data_plugin_instance_id"`
 	// DataPluginInstanceIDs is only for a multi-source-capable widget
 	// (issue #97, e.g. calendar-agenda) -- nil means "leave
 	// card_data_sources alone" (every other widget's request omits this
@@ -675,6 +703,11 @@ type cardRequest struct {
 	// reserved strip at the top of the card.
 	HeaderText   *string `json:"header_text"`
 	HeaderHalign *string `json:"header_halign"`
+	// ContentHalign/ContentValign position the widget's own content
+	// within the card (issue #149); nil/"center" on both means today's
+	// stretch-to-fill behavior.
+	ContentHalign *string `json:"content_halign"`
+	ContentValign *string `json:"content_valign"`
 }
 
 type cardResponse struct {
@@ -691,6 +724,8 @@ type cardResponse struct {
 	ThemeOverride         json.RawMessage `json:"theme_override,omitempty"`
 	HeaderText            *string         `json:"header_text,omitempty"`
 	HeaderHalign          *string         `json:"header_halign,omitempty"`
+	ContentHalign         *string         `json:"content_halign,omitempty"`
+	ContentValign         *string         `json:"content_valign,omitempty"`
 }
 
 func toCardResponse(c db.Card, dataSources []int) cardResponse {
@@ -703,6 +738,7 @@ func toCardResponse(c db.Card, dataSources []int) cardResponse {
 		DataPluginInstanceIDs: dataSources,
 		X:                     c.X, Y: c.Y, W: c.W, H: c.H, Config: json.RawMessage(config),
 		HeaderText: c.HeaderText, HeaderHalign: c.HeaderHalign,
+		ContentHalign: c.ContentHalign, ContentValign: c.ContentValign,
 	}
 	if c.ThemeOverride != nil {
 		resp.ThemeOverride = json.RawMessage(*c.ThemeOverride)
@@ -764,7 +800,7 @@ func handleCreateCard(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		id, err := db.CreateCard(sqldb, screenID, req.UIPluginID, req.DataPluginInstanceID, req.X, req.Y, req.W, req.H, config, themeOverride, req.HeaderText, req.HeaderHalign)
+		id, err := db.CreateCard(sqldb, screenID, req.UIPluginID, req.DataPluginInstanceID, req.X, req.Y, req.W, req.H, config, themeOverride, req.HeaderText, req.HeaderHalign, req.ContentHalign, req.ContentValign)
 		switch {
 		case errors.Is(err, db.ErrInUse):
 			http.Error(w, "screen not found, or data_plugin_instance_id doesn't exist", http.StatusBadRequest)
@@ -815,7 +851,7 @@ func handleUpdateCard(sqldb *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		switch err := db.UpdateCard(sqldb, id, req.UIPluginID, req.DataPluginInstanceID, req.X, req.Y, req.W, req.H, config, themeOverride, req.HeaderText, req.HeaderHalign); {
+		switch err := db.UpdateCard(sqldb, id, req.UIPluginID, req.DataPluginInstanceID, req.X, req.Y, req.W, req.H, config, themeOverride, req.HeaderText, req.HeaderHalign, req.ContentHalign, req.ContentValign); {
 		case errors.Is(err, db.ErrNotFound):
 			http.Error(w, "not found", http.StatusNotFound)
 			return
@@ -885,7 +921,7 @@ type screenLayoutResponse struct {
 
 type displayLayoutResponse struct {
 	displayResponse
-	Theme   json.RawMessage         `json:"theme,omitempty"`
+	Theme   json.RawMessage        `json:"theme,omitempty"`
 	Screens []screenLayoutResponse `json:"screens"`
 }
 

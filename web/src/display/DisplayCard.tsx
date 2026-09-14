@@ -7,7 +7,22 @@ import { useShapeData } from './useShapeData';
 interface Props {
   card: CardLayout;
   theme: ThemeTokens;
+  // Seconds of animation-delay for this card's entrance (issue #86) --
+  // 0 if omitted, so existing callers (none currently) aren't required
+  // to pass it.
+  enterDelay?: number;
 }
+
+const HALIGN_TO_JUSTIFY: Record<'left' | 'center' | 'right', CSSProperties['justifyContent']> = {
+  left: 'flex-start',
+  center: 'center',
+  right: 'flex-end',
+};
+const VALIGN_TO_ALIGN: Record<'top' | 'center' | 'bottom', CSSProperties['alignItems']> = {
+  top: 'flex-start',
+  center: 'center',
+  bottom: 'flex-end',
+};
 
 // DisplayCard resolves a card's ui_plugin_id against the compiled-in UI
 // plugin registry and renders it with live data. Falls back to a plain
@@ -15,13 +30,14 @@ interface Props {
 // outlive the plugin that created it (e.g. after a rename or a plugin
 // removed from a build), and one bad card shouldn't take the whole
 // display down.
-export default function DisplayCard({ card, theme }: Props) {
+export default function DisplayCard({ card, theme, enterDelay }: Props) {
   const plugin = getUIPlugin(card.ui_plugin_id);
   const resolvedTheme: ThemeTokens = { ...theme, ...(card.theme_override ?? {}) };
-  const gridStyle = {
+  const gridStyle: CSSProperties = {
     gridColumn: `${card.x + 1} / span ${card.w}`,
     gridRow: `${card.y + 1} / span ${card.h}`,
-  };
+    ...(enterDelay ? { '--card-enter-delay': `${enterDelay}s` } : {}),
+  } as CSSProperties;
 
   if (!plugin) {
     return (
@@ -31,10 +47,23 @@ export default function DisplayCard({ card, theme }: Props) {
     );
   }
 
+  // Content alignment (issue #149) only kicks in once either axis is
+  // set to something other than the default 'center' -- 'center'/
+  // 'center' (or both absent) renders identically to before this
+  // existed, matching every card that never opts in.
+  const hasContentAlign = (card.content_halign && card.content_halign !== 'center') || (card.content_valign && card.content_valign !== 'center');
+  const bodyStyle: CSSProperties | undefined = hasContentAlign
+    ? {
+        display: 'flex',
+        justifyContent: HALIGN_TO_JUSTIFY[card.content_halign ?? 'center'],
+        alignItems: VALIGN_TO_ALIGN[card.content_valign ?? 'center'],
+      }
+    : undefined;
+
   return (
     <div className="display-card" style={gridStyle}>
       {card.header_text && <CardHeader card={card} theme={resolvedTheme} />}
-      <div className="display-card-body">
+      <div className={`display-card-body${hasContentAlign ? ' display-card-body-aligned' : ''}`} style={bodyStyle}>
         <PluginBody plugin={plugin} card={card} theme={resolvedTheme} />
       </div>
     </div>

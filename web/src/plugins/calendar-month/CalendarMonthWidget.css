@@ -1,0 +1,93 @@
+.calendar-month-widget {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.cm-header {
+  flex-shrink: 0;
+  font-size: 0.95em;
+  font-weight: 700;
+  text-align: center;
+}
+
+.cm-weekday-row {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.cm-weekday {
+  font-size: 0.62em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.65;
+  text-align: center;
+}
+
+.cm-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: repeat(6, 1fr);
+  gap: 3px;
+}
+
+.cm-day {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-radius: 5px;
+  padding: 2px 3px;
+  overflow: hidden;
+}
+
+.cm-day--outside {
+  opacity: 0.35;
+}
+
+.cm-day--today {
+  background: rgba(127, 127, 127, 0.15);
+}
+
+.cm-day-num {
+  flex-shrink: 0;
+  font-size: 0.68em;
+  font-weight: 700;
+}
+
+.cm-day-events {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cm-event {
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-left: 2px solid transparent;
+  padding: 0 2px;
+  border-radius: 2px;
+  background: rgba(127, 127, 127, 0.12);
+  font-size: 0.56em;
+  line-height: 1.5;
+}
+
+.cm-event-overflow {
+  flex-shrink: 0;
+  font-size: 0.54em;
+  opacity: 0.65;
+}

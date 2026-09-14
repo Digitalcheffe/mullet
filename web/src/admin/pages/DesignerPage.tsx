@@ -52,6 +52,10 @@ interface Card {
   // alignment control.
   header_text?: string;
   header_halign?: 'left' | 'center' | 'right';
+  // Positions a widget's own content within its card (issue #149) --
+  // absent/'center' on both axes is today's stretch-to-fill behavior.
+  content_halign?: 'left' | 'center' | 'right';
+  content_valign?: 'top' | 'center' | 'bottom';
 }
 
 interface PluginManifest {
@@ -512,6 +516,8 @@ export default function DesignerPage() {
       theme_override: Partial<ThemeTokens> | null;
       header_text: string | null;
       header_halign: 'left' | 'center' | 'right' | null;
+      content_halign: 'left' | 'center' | 'right' | null;
+      content_valign: 'top' | 'center' | 'bottom' | null;
     },
   ) {
     await withSaveStatus(async () => {
@@ -535,6 +541,8 @@ export default function DesignerPage() {
           theme_override: values.theme_override,
           header_text: values.header_text,
           header_halign: values.header_halign,
+          content_halign: values.content_halign,
+          content_valign: values.content_valign,
         }),
       });
       if (!res.ok) {
@@ -844,11 +852,15 @@ interface CardSettingsPanelProps {
     theme_override: Partial<ThemeTokens> | null;
     header_text: string | null;
     header_halign: 'left' | 'center' | 'right' | null;
+    content_halign: 'left' | 'center' | 'right' | null;
+    content_valign: 'top' | 'center' | 'bottom' | null;
   }) => Promise<void>;
   onCancel: () => void;
 }
 
 const HEADER_HALIGNS = ['left', 'center', 'right'] as const;
+const CONTENT_HALIGNS = ['left', 'center', 'right'] as const;
+const CONTENT_VALIGNS = ['top', 'center', 'bottom'] as const;
 
 // Card-level overrides stay narrow by design (see architecture.md
 // "Theme Cascade"): a card can nudge its own background and accent, not
@@ -994,6 +1006,8 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
   const [themeOverride, setThemeOverride] = useState<Partial<ThemeTokens>>(card.theme_override ?? {});
   const [headerText, setHeaderText] = useState(card.header_text ?? '');
   const [headerHalign, setHeaderHalign] = useState<(typeof HEADER_HALIGNS)[number]>(card.header_halign ?? 'left');
+  const [contentHalign, setContentHalign] = useState<(typeof CONTENT_HALIGNS)[number]>(card.content_halign ?? 'center');
+  const [contentValign, setContentValign] = useState<(typeof CONTENT_VALIGNS)[number]>(card.content_valign ?? 'center');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -1012,6 +1026,12 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
       const headerFields = {
         header_text: trimmedHeaderText === '' ? null : trimmedHeaderText,
         header_halign: trimmedHeaderText === '' ? null : headerHalign,
+        // 'center'/'center' is stored as null on both axes -- it's the
+        // same as never having set alignment at all (DisplayCard only
+        // shrinks a widget to fit once either axis differs from
+        // 'center'), so there's no reason to persist it as a distinct value.
+        content_halign: contentHalign === 'center' ? null : contentHalign,
+        content_valign: contentValign === 'center' ? null : contentValign,
       };
       await onSave(
         supportsMulti
@@ -1125,6 +1145,34 @@ function CardSettingsPanel({ card, uiPlugin, instances, manifests, onSave, onCan
           </div>
         </div>
       )}
+
+      <div className="field">
+        <span className="kicker">Content position</span>
+        <div className="content-align-grid">
+          {CONTENT_VALIGNS.map((v) =>
+            CONTENT_HALIGNS.map((h) => (
+              <button
+                type="button"
+                key={`${v}-${h}`}
+                className={`content-align-btn${contentValign === v && contentHalign === h ? ' selected' : ''}`}
+                title={`${v}, ${h}`}
+                aria-label={`Position content ${v} ${h}`}
+                onClick={() => {
+                  setContentValign(v);
+                  setContentHalign(h);
+                }}
+              >
+                <span className="content-align-dot" />
+              </button>
+            )),
+          )}
+        </div>
+        <span className="field-help">
+          Where this widget's content sits within the card, instead of stretching to fill it. Best for a simple
+          widget like Clock, Countdown, or Quote of the Day &mdash; a list-based widget (calendar, tasks) will shrink
+          to show all of its content rather than scroll.
+        </span>
+      </div>
 
       <label className="toggle-row">
         <span>Override theme for this card</span>

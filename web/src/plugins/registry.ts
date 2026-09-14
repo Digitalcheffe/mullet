@@ -22,6 +22,8 @@ import { countdownPlugin } from './countdown/CountdownWidget';
 import { quoteOfTheDayPlugin } from './quote-of-the-day/QuoteOfTheDayWidget';
 import { moonPhasePlugin } from './moon-phase/MoonPhaseWidget';
 import { calendarWeekPlugin } from './calendar-week/CalendarWeekWidget';
+import { calendarMonthPlugin } from './calendar-month/CalendarMonthWidget';
+import { photoAlbumPlugin } from './photo-album/PhotoAlbumWidget';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const uiPlugins: UIPlugin<any>[] = [
@@ -41,6 +43,8 @@ export const uiPlugins: UIPlugin<any>[] = [
   quoteOfTheDayPlugin,
   moonPhasePlugin,
   calendarWeekPlugin,
+  calendarMonthPlugin,
+  photoAlbumPlugin,
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

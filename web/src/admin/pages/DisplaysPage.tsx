@@ -17,6 +17,12 @@ interface Display {
   rotation_seconds: number;
   show_top_bar: boolean;
   show_bottom_bar: boolean;
+  // Night mode (issue #91) -- see DisplayLayout's doc comment in
+  // useDisplayLayout.ts for the "HH:MM"/wraparound rules.
+  night_mode_enabled: boolean;
+  night_start?: string;
+  night_end?: string;
+  night_brightness: number;
 }
 
 interface Screen {
@@ -41,6 +47,10 @@ interface DisplayFormValues {
   rotation_seconds: number;
   show_top_bar: boolean;
   show_bottom_bar: boolean;
+  night_mode_enabled: boolean;
+  night_start: string;
+  night_end: string;
+  night_brightness: number;
 }
 
 // Grid density (columns/row_height/gap) and layout_mode itself aren't
@@ -126,6 +136,10 @@ export default function DisplaysPage() {
         rotation_seconds: values.rotation_seconds,
         show_top_bar: values.show_top_bar,
         show_bottom_bar: values.show_bottom_bar,
+        night_mode_enabled: values.night_mode_enabled,
+        night_start: values.night_mode_enabled && values.night_start !== '' ? values.night_start : null,
+        night_end: values.night_mode_enabled && values.night_end !== '' ? values.night_end : null,
+        night_brightness: values.night_brightness,
       }),
     });
     if (!res.ok) {
@@ -330,6 +344,10 @@ export default function DisplaysPage() {
                       rotation_seconds: 30,
                       show_top_bar: true,
                       show_bottom_bar: true,
+                      night_mode_enabled: false,
+                      night_start: '22:00',
+                      night_end: '07:00',
+                      night_brightness: 0.4,
                     }
                   : {
                       name: displayPanel.display.name,
@@ -338,8 +356,13 @@ export default function DisplaysPage() {
                       rotation_seconds: displayPanel.display.rotation_seconds,
                       show_top_bar: displayPanel.display.show_top_bar,
                       show_bottom_bar: displayPanel.display.show_bottom_bar,
+                      night_mode_enabled: displayPanel.display.night_mode_enabled,
+                      night_start: displayPanel.display.night_start ?? '22:00',
+                      night_end: displayPanel.display.night_end ?? '07:00',
+                      night_brightness: displayPanel.display.night_brightness,
                     }
               }
+              showNightMode={displayPanel.mode === 'edit'}
               submitLabel={displayPanel.mode === 'add' ? 'Add display' : 'Save changes'}
               onSubmit={(values) =>
                 displayPanel.mode === 'add'
@@ -382,12 +405,16 @@ export default function DisplaysPage() {
 interface DisplayFormProps {
   themes: Theme[];
   initialValues: DisplayFormValues;
+  // Night mode needs an existing display id to mean anything -- hidden
+  // on "Add Display" (the create endpoint doesn't persist it anyway,
+  // issue #91) rather than shown but silently dropped on save.
+  showNightMode: boolean;
   submitLabel: string;
   onSubmit: (values: DisplayFormValues) => Promise<void>;
   onCancel: () => void;
 }
 
-function DisplayForm({ themes, initialValues, submitLabel, onSubmit, onCancel }: DisplayFormProps) {
+function DisplayForm({ themes, initialValues, showNightMode, submitLabel, onSubmit, onCancel }: DisplayFormProps) {
   const [values, setValues] = useState(initialValues);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -472,6 +499,54 @@ function DisplayForm({ themes, initialValues, submitLabel, onSubmit, onCancel }:
           onChange={(e) => setValues((v) => ({ ...v, show_bottom_bar: e.target.checked }))}
         />
       </label>
+
+      {showNightMode && (
+        <>
+          <label className="toggle-row">
+            <span>Night mode</span>
+            <input
+              type="checkbox"
+              checked={values.night_mode_enabled}
+              onChange={(e) => setValues((v) => ({ ...v, night_mode_enabled: e.target.checked }))}
+            />
+          </label>
+          {values.night_mode_enabled && (
+            <>
+              <label className="field">
+                <span className="kicker">Dim from</span>
+                <input
+                  type="time"
+                  value={values.night_start}
+                  onChange={(e) => setValues((v) => ({ ...v, night_start: e.target.value }))}
+                />
+              </label>
+              <label className="field">
+                <span className="kicker">Until</span>
+                <input
+                  type="time"
+                  value={values.night_end}
+                  onChange={(e) => setValues((v) => ({ ...v, night_end: e.target.value }))}
+                />
+                <span className="field-help">
+                  Wraps past midnight if "Until" is earlier than "Dim from" (e.g. 10pm&ndash;7am).
+                </span>
+              </label>
+              <label className="field">
+                <span className="kicker">Brightness while dimmed</span>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={0.9}
+                  step={0.05}
+                  value={values.night_brightness}
+                  onChange={(e) => setValues((v) => ({ ...v, night_brightness: Number(e.target.value) }))}
+                />
+                <span className="field-help">{Math.round(values.night_brightness * 100)}%</span>
+              </label>
+            </>
+          )}
+        </>
+      )}
 
       <div className="manifest-form-actions">
         <button type="button" className="btn-secondary" onClick={onCancel}>

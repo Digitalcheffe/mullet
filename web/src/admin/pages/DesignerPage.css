@@ -446,3 +446,40 @@
   background: var(--accent);
   color: var(--surface);
 }
+
+/* Content-alignment picker (issue #149) -- a 3x3 grid of positions
+   mirroring the header alignment row's button-based pattern, just in
+   two dimensions instead of one. */
+.content-align-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  width: 96px;
+}
+.content-align-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+.content-align-btn:hover {
+  background: var(--surface-alt);
+}
+.content-align-btn.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.content-align-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+}
+.content-align-btn.selected .content-align-dot {
+  background: var(--surface);
+}

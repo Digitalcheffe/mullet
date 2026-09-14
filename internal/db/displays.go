@@ -132,20 +132,32 @@ type Display struct {
 	RotationSeconds int
 	ShowTopBar      bool
 	ShowBottomBar   bool
+	// Night mode (issue #91) -- dims the display via a CSS brightness
+	// filter between NightStart and NightEnd (each "HH:MM", e.g.
+	// "22:00"), wrapping past midnight when Start > End. Both nil
+	// alongside NightModeEnabled false is every display's default.
+	NightModeEnabled bool
+	NightStart       *string
+	NightEnd         *string
+	NightBrightness  float64
 }
 
 func scanDisplay(row interface{ Scan(...any) error }) (Display, error) {
 	var d Display
-	var showTopBar, showBottomBar int
-	if err := row.Scan(&d.ID, &d.Name, &d.Slug, &d.ThemeID, &d.RotationSeconds, &showTopBar, &showBottomBar); err != nil {
+	var showTopBar, showBottomBar, nightModeEnabled int
+	if err := row.Scan(
+		&d.ID, &d.Name, &d.Slug, &d.ThemeID, &d.RotationSeconds, &showTopBar, &showBottomBar,
+		&nightModeEnabled, &d.NightStart, &d.NightEnd, &d.NightBrightness,
+	); err != nil {
 		return Display{}, err
 	}
 	d.ShowTopBar = showTopBar != 0
 	d.ShowBottomBar = showBottomBar != 0
+	d.NightModeEnabled = nightModeEnabled != 0
 	return d, nil
 }
 
-const displayColumns = `id, name, slug, theme_id, rotation_seconds, show_top_bar, show_bottom_bar`
+const displayColumns = `id, name, slug, theme_id, rotation_seconds, show_top_bar, show_bottom_bar, night_mode_enabled, night_start, night_end, night_brightness`
 
 // ListDisplays returns every display, oldest first.
 func ListDisplays(sqldb *sql.DB) ([]Display, error) {
@@ -216,10 +228,12 @@ func CreateDisplay(sqldb *sql.DB, name, slug string, themeID *int, rotationSecon
 
 // UpdateDisplay overwrites an existing display's editable fields.
 // Returns ErrNotFound if id doesn't exist.
-func UpdateDisplay(sqldb *sql.DB, id int, name, slug string, themeID *int, rotationSeconds int, showTopBar, showBottomBar bool) error {
+func UpdateDisplay(sqldb *sql.DB, id int, name, slug string, themeID *int, rotationSeconds int, showTopBar, showBottomBar, nightModeEnabled bool, nightStart, nightEnd *string, nightBrightness float64) error {
 	result, err := sqldb.Exec(
-		`UPDATE displays SET name = ?, slug = ?, theme_id = ?, rotation_seconds = ?, show_top_bar = ?, show_bottom_bar = ? WHERE id = ?`,
-		name, slug, themeID, rotationSeconds, boolToInt(showTopBar), boolToInt(showBottomBar), id,
+		`UPDATE displays SET name = ?, slug = ?, theme_id = ?, rotation_seconds = ?, show_top_bar = ?, show_bottom_bar = ?,
+		 night_mode_enabled = ?, night_start = ?, night_end = ?, night_brightness = ? WHERE id = ?`,
+		name, slug, themeID, rotationSeconds, boolToInt(showTopBar), boolToInt(showBottomBar),
+		boolToInt(nightModeEnabled), nightStart, nightEnd, nightBrightness, id,
 	)
 	if err != nil {
 		if isForeignKeyViolation(err) {
@@ -366,20 +380,25 @@ type Card struct {
 	// the top of the card, never as a middle/bottom overlay.
 	HeaderText   *string
 	HeaderHalign *string
+	// ContentHalign/ContentValign position the widget's own content
+	// within the card (issue #149) -- nil on both means today's
+	// stretch-to-fill behavior, unchanged.
+	ContentHalign *string
+	ContentValign *string
 }
 
 func scanCard(row interface{ Scan(...any) error }) (Card, error) {
 	var c Card
 	if err := row.Scan(
 		&c.ID, &c.ScreenID, &c.UIPluginID, &c.DataPluginInstanceID, &c.X, &c.Y, &c.W, &c.H, &c.Config, &c.ThemeOverride,
-		&c.HeaderText, &c.HeaderHalign,
+		&c.HeaderText, &c.HeaderHalign, &c.ContentHalign, &c.ContentValign,
 	); err != nil {
 		return Card{}, err
 	}
 	return c, nil
 }
 
-const cardColumns = `id, screen_id, ui_plugin_id, data_plugin_instance_id, x, y, w, h, config, theme_override, header_text, header_halign`
+const cardColumns = `id, screen_id, ui_plugin_id, data_plugin_instance_id, x, y, w, h, config, theme_override, header_text, header_halign, content_halign, content_valign`
 
 // ListCardsByScreen returns every card placed on screenID.
 func ListCardsByScreen(sqldb *sql.DB, screenID int) ([]Card, error) {
@@ -416,11 +435,11 @@ func GetCard(sqldb *sql.DB, id int) (Card, error) {
 // CreateCard inserts a new card on screenID and returns its ID. Returns
 // ErrInUse if screenID or a non-nil dataPluginInstanceID doesn't exist.
 // headerText/headerHalign nil means no header (issue #145).
-func CreateCard(sqldb *sql.DB, screenID int, uiPluginID string, dataPluginInstanceID *int, x, y, w, h int, config string, themeOverride, headerText, headerHalign *string) (int, error) {
+func CreateCard(sqldb *sql.DB, screenID int, uiPluginID string, dataPluginInstanceID *int, x, y, w, h int, config string, themeOverride, headerText, headerHalign, contentHalign, contentValign *string) (int, error) {
 	result, err := sqldb.Exec(
-		`INSERT INTO cards (screen_id, ui_plugin_id, data_plugin_instance_id, x, y, w, h, config, theme_override, header_text, header_halign)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		screenID, uiPluginID, dataPluginInstanceID, x, y, w, h, config, themeOverride, headerText, headerHalign,
+		`INSERT INTO cards (screen_id, ui_plugin_id, data_plugin_instance_id, x, y, w, h, config, theme_override, header_text, header_halign, content_halign, content_valign)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		screenID, uiPluginID, dataPluginInstanceID, x, y, w, h, config, themeOverride, headerText, headerHalign, contentHalign, contentValign,
 	)
 	if err != nil {
 		if isForeignKeyViolation(err) {
@@ -439,10 +458,10 @@ func CreateCard(sqldb *sql.DB, screenID int, uiPluginID string, dataPluginInstan
 // including screen_id -- a card doesn't move between screens; remove
 // and recreate it instead). Returns ErrNotFound if id doesn't exist, or
 // ErrInUse if a non-nil dataPluginInstanceID doesn't exist.
-func UpdateCard(sqldb *sql.DB, id int, uiPluginID string, dataPluginInstanceID *int, x, y, w, h int, config string, themeOverride, headerText, headerHalign *string) error {
+func UpdateCard(sqldb *sql.DB, id int, uiPluginID string, dataPluginInstanceID *int, x, y, w, h int, config string, themeOverride, headerText, headerHalign, contentHalign, contentValign *string) error {
 	result, err := sqldb.Exec(
-		`UPDATE cards SET ui_plugin_id = ?, data_plugin_instance_id = ?, x = ?, y = ?, w = ?, h = ?, config = ?, theme_override = ?, header_text = ?, header_halign = ? WHERE id = ?`,
-		uiPluginID, dataPluginInstanceID, x, y, w, h, config, themeOverride, headerText, headerHalign, id,
+		`UPDATE cards SET ui_plugin_id = ?, data_plugin_instance_id = ?, x = ?, y = ?, w = ?, h = ?, config = ?, theme_override = ?, header_text = ?, header_halign = ?, content_halign = ?, content_valign = ? WHERE id = ?`,
+		uiPluginID, dataPluginInstanceID, x, y, w, h, config, themeOverride, headerText, headerHalign, contentHalign, contentValign, id,
 	)
 	if err != nil {
 		if isForeignKeyViolation(err) {

@@ -38,9 +38,25 @@ export interface ThemeTokens {
 
 // backgroundCSS turns a theme's background token into a CSS `background`
 // shorthand value -- solid and gradient values are already valid CSS on
-// their own, but an image needs `url(...)` plus sizing/positioning.
+// their own, but an image needs `url(...)` plus sizing/positioning. For
+// an image background with more than one URL (issue #92's slideshow),
+// this renders only the first -- callers that need the full list and
+// its own crossfade/Ken-Burns motion (the display renderer) should use
+// parseBackgroundImages + BackgroundLayer instead of this directly.
 export function backgroundCSS(background: ThemeTokens['background']): string {
-  return background.type === 'image' ? `center/cover no-repeat url(${background.value})` : background.value;
+  if (background.type !== 'image') return background.value;
+  return `center/cover no-repeat url(${parseBackgroundImages(background.value)[0] ?? ''})`;
+}
+
+// An image background's value is one URL per line (issue #92) -- a
+// plain single URL (every background saved before slideshow support
+// existed) is just a one-line list, so this stays backward compatible
+// with no migration needed.
+export function parseBackgroundImages(value: string): string[] {
+  return value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
 }
 
 export const defaultTheme: ThemeTokens = {

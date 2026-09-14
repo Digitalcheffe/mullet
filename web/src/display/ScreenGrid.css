@@ -30,6 +30,15 @@
   }
 }
 
+/* Per-display opt-out (issue #171), independent of the viewer's own
+   reduce-motion preference above -- .no-transitions is set on
+   .display-app in DisplayApp.tsx from the display's own
+   transitions_enabled field. */
+.no-transitions .screen-grid,
+.no-transitions .display-card {
+  animation: none !important;
+}
+
 .display-card {
   position: relative;
   min-width: 0;

@@ -81,7 +81,7 @@ export default function DisplayApp() {
   const style = nightModeActive ? { background, filter: `brightness(${layout.night_brightness})` } : { background };
 
   return (
-    <div className="display-app" style={style}>
+    <div className={`display-app${layout.transitions_enabled ? '' : ' no-transitions'}`} style={style}>
       {isImageBackground && <BackgroundLayer background={layout.theme.background} />}
       <div className="display-app-content">
         {layout.show_top_bar && <TopBar displayName={layout.name} theme={layout.theme} />}

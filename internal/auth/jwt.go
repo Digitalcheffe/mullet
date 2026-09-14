@@ -14,7 +14,12 @@ import (
 // signature, malformed, expired, or wrong signing method.
 var ErrInvalidToken = errors.New("invalid or expired token")
 
-const tokenTTL = 24 * time.Hour
+// Governs both the JWT's own expiry and, since the frontend now
+// persists the token across reloads (issue #168), how long an admin
+// actually stays logged in day-to-day -- 4h balances not re-prompting
+// mid-session against not leaving a long-lived token sitting in
+// sessionStorage.
+const tokenTTL = 4 * time.Hour
 
 // pendingMFATokenTTL is deliberately short -- this token exists only to
 // carry a verified username+password from login to the MFA-verify step

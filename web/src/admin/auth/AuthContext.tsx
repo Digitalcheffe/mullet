@@ -8,6 +8,47 @@ export interface LoginResult {
   pendingToken?: string;
 }
 
+// Persisted in sessionStorage (issue #168) -- cleared when the tab
+// closes, unlike localStorage, so it doesn't linger as a stored
+// credential past the browser session, but survives the reload a back/
+// forward navigation or manual refresh causes within it. The token
+// itself already carries a real 24h server-side expiry (see tokenTTL
+// in internal/auth/jwt.go); a stale-but-still-stored one needs no
+// special handling here since useApiFetch already logs out on any 401.
+const SESSION_STORAGE_KEY = 'mullet-admin-session';
+
+interface StoredSession {
+  token: string;
+  username: string;
+}
+
+function readStoredSession(): StoredSession | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.token === 'string' && typeof parsed?.username === 'string') {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSession(session: StoredSession | null): void {
+  try {
+    if (session) {
+      sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    } else {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+  } catch {
+    // Storage unavailable (private browsing, quota, etc.) -- session
+    // simply won't survive a reload, same as before this fix.
+  }
+}
+
 interface AuthContextValue {
   token: string | null;
   username: string | null;
@@ -25,17 +66,19 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(null);
-  const [username, setUsername] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(() => readStoredSession()?.token ?? null);
+  const [username, setUsername] = useState<string | null>(() => readStoredSession()?.username ?? null);
 
   const setSession = useCallback((newToken: string, newUsername: string) => {
     setToken(newToken);
     setUsername(newUsername);
+    writeStoredSession({ token: newToken, username: newUsername });
   }, []);
 
   const logout = useCallback(() => {
     setToken(null);
     setUsername(null);
+    writeStoredSession(null);
   }, []);
 
   const login = useCallback(

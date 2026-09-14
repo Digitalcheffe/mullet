@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import ReactGridLayout, { useContainerWidth, type Layout, type LayoutItem } from 'react-grid-layout';
+import ReactGridLayout, { type Layout, type LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useApiFetch } from '../auth/useApiFetch';
@@ -117,18 +117,35 @@ function presetSize(plugin: ReturnType<typeof getUIPlugin>, preset: SizePreset, 
 // A faint reference grid behind the cards, so the column/row structure
 // is visible even in empty space rather than only implied by wherever
 // cards happen to already sit -- otherwise there's no way to see the
-// grid you're placing things onto at all. Row lines line up exactly
-// with react-grid-layout's own math (each row is rowHeight + gap
-// pixels); column lines are percentage-based and only an approximation
-// of RGL's actual column edges (which subtract margin from available
-// width per column) -- close enough to read as a grid, not meant to be
-// a pixel-perfect placement guide.
-function gridlineBackground(cols: number, rowHeight: number, gap: number): string {
-  const colPct = 100 / cols;
+// grid you're placing things onto at all. Both row and column lines
+// line up exactly with react-grid-layout's own math: each row is
+// rowHeight + gap pixels, and each column is (containerWidth -
+// gap*(cols+1))/cols + gap pixels (RGL divides the gap-reduced width
+// evenly, then adds one gap back per column) -- containerWidth is
+// needed to get this right in absolute pixels; a pure percentage
+// split (100/cols) ignores the margin RGL subtracts per column and
+// drifts from the real column edges by a growing number of pixels
+// toward the grid's left edge, which read as cards placed "off grid"
+// even though their saved x/y were always correct (issue #165).
+function gridlineBackground(cols: number, rowHeight: number, gap: number, containerWidth: number): string {
   const rowPitch = rowHeight + gap;
+  const rowGradient = `repeating-linear-gradient(to bottom, transparent 0, transparent ${rowPitch - 1}px, var(--border) ${rowPitch - 1}px, var(--border) ${rowPitch}px)`;
+  // Before the canvas has been measured (containerWidth is still 0 on
+  // first render), fall back to the old percentage approximation rather
+  // than a negative/garbage pixel value -- it's replaced within a frame
+  // once useContainerWidth() reports a real width.
+  if (containerWidth <= 0) {
+    const colPct = 100 / cols;
+    return [
+      `repeating-linear-gradient(to right, transparent 0, transparent calc(${colPct}% - 1px), var(--border) calc(${colPct}% - 1px), var(--border) ${colPct}%)`,
+      rowGradient,
+    ].join(', ');
+  }
+  const colWidth = (containerWidth - gap * (cols + 1)) / cols;
+  const colPitch = colWidth + gap;
   return [
-    `repeating-linear-gradient(to right, transparent 0, transparent calc(${colPct}% - 1px), var(--border) calc(${colPct}% - 1px), var(--border) ${colPct}%)`,
-    `repeating-linear-gradient(to bottom, transparent 0, transparent ${rowPitch - 1}px, var(--border) ${rowPitch - 1}px, var(--border) ${rowPitch}px)`,
+    `repeating-linear-gradient(to right, transparent 0, transparent ${colPitch - 1}px, var(--border) ${colPitch - 1}px, var(--border) ${colPitch}px)`,
+    rowGradient,
   ].join(', ');
 }
 
@@ -147,7 +164,36 @@ export default function DesignerPage() {
   const { displayId, screenId } = useParams<{ displayId: string; screenId: string }>();
   const navigate = useNavigate();
   const apiFetch = useApiFetch();
-  const { width, containerRef, mounted } = useContainerWidth();
+  // react-grid-layout's own useContainerWidth() (issue #165): the
+  // canvas div it measures only exists once `screen` has loaded, which
+  // happens well after this component's first commit. An effect keyed
+  // off a stable/empty dependency array (their hook's, and an earlier
+  // version of this one) only ever runs against that first commit, when
+  // the ref is still null -- by the time the real div mounts later,
+  // nothing re-triggers it, so width stays stuck at the hook's 1280px
+  // fallback forever, silently mismatched against the canvas's real
+  // (usually much narrower) rendered width. RGL then positions every
+  // card using that wrong 1280px column math, so cards land somewhere
+  // other than where the visible grid (and the mouse) says they should
+  // -- exactly the "wiggling off grid" bug reported. A callback ref
+  // sidesteps this: React invokes it exactly when the node actually
+  // attaches, however late that is, so the ResizeObserver always ends
+  // up on a real, current node.
+  const [width, setWidth] = useState(0);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    resizeObserverRef.current?.disconnect();
+    resizeObserverRef.current = null;
+    if (!node) return;
+    const observer = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w != null) setWidth(Math.round(w));
+    });
+    observer.observe(node);
+    resizeObserverRef.current = observer;
+    setWidth(Math.round(node.getBoundingClientRect().width));
+  }, []);
+  const mounted = width > 0;
 
   const [display, setDisplay] = useState<Display | null>(null);
   const [screens, setScreens] = useState<Screen[]>([]);
@@ -673,7 +719,7 @@ export default function DesignerPage() {
           className="designer-grid-wrap"
           ref={containerRef}
           style={{
-            backgroundImage: gridlineBackground(screen.columns, screen.row_height, screen.gap),
+            backgroundImage: gridlineBackground(screen.columns, screen.row_height, screen.gap, width),
             // Custom (no preset) keeps the default CSS flex:1 fill-available-
             // space behavior untouched. A preset instead lets flexbox size
             // (and, if the viewport is short, shrink) the canvas from its

@@ -2,6 +2,11 @@
   <img src="docs/mullet1.png" alt="Mullet" width="360">
 </p>
 
+<p align="center">
+  <a href="https://github.com/Digitalcheffe/mullet/actions/workflows/docker-build.yml"><img src="https://github.com/Digitalcheffe/mullet/actions/workflows/docker-build.yml/badge.svg" alt="Docker build"></a>
+  <a href="https://github.com/Digitalcheffe/mullet/actions/workflows/codeql.yml"><img src="https://github.com/Digitalcheffe/mullet/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+</p>
+
 > Your family calendar, weather, and whatever else is worth a glance — always up on a TV, tablet, or spare display, without a subscription.
 
 Mullet is a self-hosted digital signage platform for the home. Point a spare TV, a wall-mounted tablet, or a Raspberry Pi + monitor at it, and it becomes an always-on household information display: what's on the calendar today, whose birthday is coming up, the weather, what's for dinner, package deliveries — whatever's relevant to where that screen hangs.
@@ -47,11 +52,34 @@ cd mullet
 docker compose up -d
 ```
 
-`docker-compose.yml` builds the image locally (there's no published image yet) and mounts `./data` for the database, uploads, and logs.
+`docker-compose.yml` builds the image locally and stores everything in a named Docker volume (`mullet_data`).
 
 Open `http://localhost:8080/admin` to run first-time setup (create the admin account), then `http://localhost:8080/register` from any display device to add it to a screen.
 
 Everything Mullet needs to keep — the database, uploaded images, and logs — lives under `/data`, so rebuilding and restarting the container (`git pull && docker compose up -d --build`) never loses it.
+
+### Using the published image
+
+Multi-arch images (`linux/amd64` + `linux/arm64`, so this works on a Raspberry Pi too) are published to GHCR on every push to `main`. Skip the git clone and point compose at the image instead — this example uses a **bind mount** rather than the named volume above, so replace `/path/to/your/mullet-data` with wherever you actually want the database, uploads, and logs to live on the host:
+
+```yaml
+services:
+  mullet:
+    image: ghcr.io/digitalcheffe/mullet:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - /path/to/your/mullet-data:/data
+    restart: unless-stopped
+```
+
+```bash
+docker compose up -d
+```
+
+### Behind a reverse proxy
+
+Mullet works behind a TLS-terminating reverse proxy (e.g. Traefik) with no extra configuration: it already reads `X-Forwarded-Proto`/`X-Forwarded-For` to generate correct `https://` links (password reset, OAuth callbacks) and real client IPs, and auth is bearer-token, not cookie-based, so there's no cookie domain/`SameSite` setup to worry about. Point the proxy at the container's plain-HTTP `PORT` and let it handle the certificate. Set `CORS_ORIGINS` only if you're serving the admin UI from a different origin than the API — a normal single-image deployment doesn't need it.
 
 ---
 

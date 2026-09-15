@@ -1,0 +1,24 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+
+  # Keeps the Dockerfile's own FROM lines (golang, node, alpine) current
+  # -- these don't move via gomod/npm since they're base images, not
+  # dependencies of either build.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

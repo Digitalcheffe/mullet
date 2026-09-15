@@ -65,7 +65,7 @@ jobs:
 
       - name: Scan built image with Trivy
         if: github.event_name != 'pull_request'
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           # digest, not a mutable tag -- scans exactly what was just built,
           # not whatever "latest" happens to resolve to when this runs.

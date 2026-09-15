@@ -32,7 +32,7 @@ jobs:
         # Pull requests from forks don't get a token with package-write
         # access, so only log in (and later push) on same-repo events.
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}

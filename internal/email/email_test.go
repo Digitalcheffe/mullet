@@ -165,3 +165,30 @@ func TestSendConnectionRefusedReturnsError(t *testing.T) {
 		t.Error("Send to a closed port = nil error, want a connection error")
 	}
 }
+
+// A CR or LF smuggled into To/Subject/FromAddress would let a caller
+// inject extra headers -- or a whole forged message -- into the raw
+// header block Send writes (CWE-93). Rejected before ever dialing out,
+// so these never even reach a listener.
+func TestSendRejectsHeaderInjection(t *testing.T) {
+	cases := []struct {
+		name              string
+		to, subject, from string
+	}{
+		{"to", "victim@example.com\r\nBcc: attacker@evil.com", "s", "a@example.com"},
+		{"subject", "b@example.com", "s\r\nBcc: attacker@evil.com", "a@example.com"},
+		{"from", "b@example.com", "s", "a@example.com\r\nBcc: attacker@evil.com"},
+		{"lf-only", "b@example.com\nBcc: attacker@evil.com", "s", "a@example.com"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := Send(Config{Host: "127.0.0.1", Port: 1, FromAddress: c.from, TLSMode: TLSNone}, c.to, c.subject, "body")
+			if err == nil {
+				t.Fatalf("Send with a CR/LF in %s = nil error, want it rejected", c.name)
+			}
+			if strings.Contains(err.Error(), "connecting to") {
+				t.Errorf("Send dialed out before validating headers: %v", err)
+			}
+		})
+	}
+}

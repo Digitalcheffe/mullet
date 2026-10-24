@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/smtp"
 	"strconv"
+	"strings"
 )
 
 // TLS modes, matching db.SMTPTLSNone/SMTPTLSStartTLS/SMTPTLSTLS --
@@ -44,6 +45,19 @@ type Config struct {
 // appropriate for a trusted local relay reachable over a private
 // network.
 func Send(cfg Config, to, subject, body string) error {
+	// From/To/Subject all land in the raw header block below via a plain
+	// Sprintf, not a MIME-aware writer -- a CR or LF smuggled into any of
+	// them (e.g. handleTestSMTP's request-body "to") would let a caller
+	// inject arbitrary extra headers, or a whole forged message, into
+	// mail sent through the server's real SMTP relay (CWE-93). Body isn't
+	// checked: it only ever lands after the blank line separating headers
+	// from content, so it can't forge a header no matter what it contains.
+	for name, v := range map[string]string{"from address": cfg.FromAddress, "to address": to, "subject": subject} {
+		if strings.ContainsAny(v, "\r\n") {
+			return fmt.Errorf("%s must not contain line breaks", name)
+		}
+	}
+
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 
 	var conn net.Conn

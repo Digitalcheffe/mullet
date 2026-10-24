@@ -4,7 +4,6 @@
 
 <p align="center">
   <a href="https://github.com/Digitalcheffe/mullet/actions/workflows/docker-build.yml"><img src="https://github.com/Digitalcheffe/mullet/actions/workflows/docker-build.yml/badge.svg" alt="Docker build"></a>
-  <a href="https://github.com/Digitalcheffe/mullet/actions/workflows/codeql.yml"><img src="https://github.com/Digitalcheffe/mullet/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
 </p>
 
 > Your family calendar, weather, and whatever else is worth a glance — always up on a TV, tablet, or spare display, without a subscription.

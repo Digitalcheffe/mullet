@@ -8,7 +8,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/microsoft/kiota-abstractions-go v1.9.4
 	github.com/microsoft/kiota-authentication-azure-go v1.3.1
-	github.com/microsoftgraph/msgraph-sdk-go v1.102.0
+	github.com/microsoftgraph/msgraph-sdk-go v1.105.0
 	github.com/teambition/rrule-go v1.8.2
 	golang.org/x/crypto v0.58.0
 	golang.org/x/image v0.46.0

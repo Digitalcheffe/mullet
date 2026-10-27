@@ -11,7 +11,7 @@ require (
 	github.com/microsoftgraph/msgraph-sdk-go v1.102.0
 	github.com/teambition/rrule-go v1.8.2
 	golang.org/x/crypto v0.58.0
-	golang.org/x/image v0.46.0
+	golang.org/x/image v0.47.0
 	golang.org/x/oauth2 v0.37.0
 	modernc.org/sqlite v1.60.1
 )
